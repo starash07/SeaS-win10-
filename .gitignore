@@ -1,0 +1,20 @@
+.vs/
+.idea/
+**/bin/
+**/obj/
+**/artifacts/
+dist/
+publish/
+TestResults/
+*.user
+*.suo
+*.rsuser
+*.userosscache
+*.sln.docstates
+*.tmp
+*.log
+*.lnk
+.DS_Store
+Thumbs.db
+
+# Bundled LittleFish runtime under src/SeaS.App/Plugins is required by SeaS.

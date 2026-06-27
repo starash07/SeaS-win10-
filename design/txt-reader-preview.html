@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SeaS TXT Reader Preview</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --sidebar-left: #afd0ec;
+      --sidebar-mid: #b8d6ee;
+      --sidebar-right: #c3dcf1;
+      --surface: #ffffff;
+      --reader-bg: #f7fafc;
+      --control: #f1f6f9;
+      --control-hover: #e7f1f7;
+      --line: #e5eef3;
+      --text: #3f4b52;
+      --muted: #81909a;
+      --faint: #aab6bd;
+      --accent: #4e7185;
+      --accent-soft: #e9f3fd;
+      --lime: #c6f7bd;
+      --lime-text: #557152;
+      --font-size: 18px;
+      --line-height: 1.95;
+      --content-width: 720px;
+      --app-radius: 10px;
+      --font-ui: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      --font-reader: "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-width: 920px;
+      height: 100%;
+      min-height: 640px;
+      margin: 0;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      color: var(--text);
+      background: #eaf0f4;
+      font-family: var(--font-ui);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid rgba(78, 113, 133, 0.32);
+      outline-offset: 2px;
+    }
+
+    .app {
+      position: relative;
+      width: min(1120px, calc(100vw - 40px));
+      height: min(720px, calc(100vh - 40px));
+      min-height: 600px;
+      display: grid;
+      grid-template-columns: 68px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.92);
+      border-radius: var(--app-radius);
+      background: var(--surface);
+      box-shadow: 0 22px 60px rgba(72, 100, 118, 0.12);
+    }
+
+    .sidebar {
+      position: relative;
+      z-index: 20;
+      grid-row: 1;
+      grid-column: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border-right: 1px solid rgba(255, 255, 255, 0.28);
+      background: linear-gradient(90deg, var(--sidebar-left), var(--sidebar-mid) 55%, var(--sidebar-right));
+    }
+
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      margin-top: 23px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #356a88;
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    .brand-mark span {
+      transform: translateY(-1px);
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    .rail-actions {
+      width: 100%;
+      margin-top: 39px;
+      display: grid;
+      justify-items: center;
+      gap: 9px;
+    }
+
+    .rail-spacer {
+      flex: 1;
+    }
+
+    .rail-bottom {
+      margin-bottom: 18px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .icon-button {
+      position: relative;
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #55798e;
+      background: transparent;
+      transition: color 150ms ease, background 150ms ease, transform 150ms ease;
+    }
+
+    .icon-button svg {
+      width: 17px;
+      height: 17px;
+      stroke-width: 1.7;
+    }
+
+    .icon-button:hover,
+    .icon-button.active {
+      color: #356a88;
+      background: rgba(255, 255, 255, 0.68);
+    }
+
+    .icon-button:active {
+      transform: scale(0.94);
+    }
+
+    .icon-button::after {
+      position: absolute;
+      left: 47px;
+      top: 50%;
+      z-index: 50;
+      padding: 6px 9px;
+      border-radius: 6px;
+      color: #ffffff;
+      background: rgba(63, 75, 82, 0.92);
+      content: attr(aria-label);
+      font-size: 11px;
+      line-height: 1;
+      white-space: nowrap;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-4px, -50%);
+      transition: opacity 120ms ease, transform 120ms ease;
+    }
+
+    .icon-button:hover::after {
+      opacity: 1;
+      transform: translate(0, -50%);
+    }
+
+    .workspace {
+      position: relative;
+      grid-column: 2;
+      min-width: 0;
+      display: grid;
+      grid-template-rows: 86px minmax(0, 1fr) 66px;
+      overflow: hidden;
+      background: var(--reader-bg);
+      transition: background 180ms ease;
+    }
+
+    .topbar {
+      position: relative;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: minmax(190px, 1fr) auto minmax(190px, 1fr);
+      align-items: center;
+      padding: 0 24px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+    }
+
+    .book-identity {
+      min-width: 0;
+    }
+
+    .book-title {
+      overflow: hidden;
+      color: var(--text);
+      font-size: 15px;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .book-author {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .chapter-position {
+      text-align: center;
+    }
+
+    .chapter-kicker {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .chapter-title {
+      margin-top: 4px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .window-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .top-icon {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--muted);
+      background: transparent;
+      transition: color 150ms ease, background 150ms ease;
+    }
+
+    .top-icon:hover,
+    .top-icon.active {
+      color: var(--accent);
+      background: var(--control-hover);
+    }
+
+    .top-icon svg {
+      width: 16px;
+      height: 16px;
+      stroke-width: 1.7;
+    }
+
+    .window-line {
+      width: 1px;
+      height: 18px;
+      margin: 0 7px;
+      background: var(--line);
+    }
+
+    .reader-area {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .reading-scroll {
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      scrollbar-color: #cfdee7 transparent;
+      scrollbar-width: thin;
+    }
+
+    .reading-scroll::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .reading-scroll::-webkit-scrollbar-thumb {
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: #cfdee7;
+      background-clip: padding-box;
+    }
+
+    .reading-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .article {
+      width: min(var(--content-width), calc(100% - 96px));
+      margin: 0 auto;
+      padding: 52px 0 92px;
+      color: var(--text);
+      font-family: var(--font-reader);
+      font-size: var(--font-size);
+      line-height: var(--line-height);
+      transition: width 180ms ease, color 180ms ease, font-size 180ms ease, line-height 180ms ease;
+    }
+
+    .article-heading {
+      margin: 0 0 34px;
+      text-align: center;
+    }
+
+    .chapter-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 25px;
+      padding: 4px 11px;
+      border-radius: 13px;
+      color: var(--lime-text);
+      background: var(--lime);
+      font-family: var(--font-ui);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .article-heading h1 {
+      margin: 16px 0 0;
+      color: var(--text);
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    .article p {
+      margin: 0 0 1.15em;
+      text-align: justify;
+      text-indent: 2em;
+    }
+
+    .article-break {
+      width: 80px;
+      height: 1px;
+      margin: 34px auto;
+      background: var(--line);
+    }
+
+    .bottom-bar {
+      position: relative;
+      z-index: 12;
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr) 120px;
+      align-items: center;
+      padding: 0 24px;
+      border-top: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.97);
+    }
+
+    .page-action {
+      height: 36px;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      border-radius: 8px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 12px;
+      transition: color 150ms ease, background 150ms ease;
+    }
+
+    .page-action:hover {
+      color: var(--accent);
+      background: var(--control);
+    }
+
+    .page-action svg {
+      width: 15px;
+      height: 15px;
+      stroke-width: 1.7;
+    }
+
+    .page-action.next {
+      justify-content: flex-end;
+    }
+
+    .progress-cluster {
+      width: min(520px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 46px minmax(120px, 1fr) 62px;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .progress-track {
+      position: relative;
+      height: 4px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e3edf2;
+      cursor: pointer;
+    }
+
+    .progress-fill {
+      width: 38%;
+      height: 100%;
+      border-radius: inherit;
+      background: #9dc7df;
+    }
+
+    .progress-thumb {
+      position: absolute;
+      top: 50%;
+      left: 38%;
+      width: 10px;
+      height: 10px;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      background: #6fa4c1;
+      box-shadow: 0 1px 5px rgba(78, 113, 133, 0.22);
+      transform: translate(-50%, -50%);
+    }
+
+    .panel {
+      position: absolute;
+      top: 14px;
+      bottom: 14px;
+      z-index: 30;
+      width: 286px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.98);
+      box-shadow: 0 18px 48px rgba(75, 103, 119, 0.13);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    .panel.open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(0);
+    }
+
+    .toc-panel {
+      left: 14px;
+      transform: translateX(-18px);
+    }
+
+    .settings-panel {
+      right: 14px;
+      transform: translateX(18px);
+    }
+
+    .panel-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-title {
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .panel-close {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--muted);
+      background: transparent;
+    }
+
+    .panel-close:hover {
+      color: var(--accent);
+      background: var(--control);
+    }
+
+    .panel-close svg {
+      width: 15px;
+      height: 15px;
+    }
+
+    .toc-list {
+      height: calc(100% - 64px);
+      margin: 0;
+      padding: 10px;
+      overflow-y: auto;
+      list-style: none;
+    }
+
+    .toc-item {
+      width: 100%;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 10px;
+      border-radius: 7px;
+      color: var(--muted);
+      background: transparent;
+      text-align: left;
+      font-size: 12px;
+    }
+
+    .toc-item:hover {
+      color: var(--accent);
+      background: var(--control);
+    }
+
+    .toc-item.active {
+      color: var(--text);
+      background: var(--accent-soft);
+      font-weight: 600;
+    }
+
+    .toc-number {
+      min-width: 25px;
+      color: var(--faint);
+      font-size: 10px;
+    }
+
+    .toc-item.active .toc-number {
+      color: var(--lime-text);
+      background: var(--lime);
+      padding: 3px 5px;
+      border-radius: 9px;
+    }
+
+    .settings-content {
+      height: calc(100% - 64px);
+      padding: 20px 18px;
+      overflow-y: auto;
+    }
+
+    .setting-group + .setting-group {
+      margin-top: 24px;
+    }
+
+    .setting-label {
+      display: block;
+      margin-bottom: 11px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .stepper {
+      display: grid;
+      grid-template-columns: 42px 1fr 42px;
+      height: 38px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+    }
+
+    .stepper button {
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      background: transparent;
+      font-size: 17px;
+    }
+
+    .stepper button:hover {
+      background: var(--control);
+    }
+
+    .stepper-value {
+      display: grid;
+      place-items: center;
+      border-right: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .segmented {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 5px;
+      padding: 4px;
+      border-radius: 8px;
+      background: var(--control);
+    }
+
+    .segment {
+      height: 31px;
+      border-radius: 6px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 11px;
+    }
+
+    .segment.active {
+      color: var(--text);
+      background: var(--surface);
+      box-shadow: 0 2px 8px rgba(82, 110, 127, 0.08);
+    }
+
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .theme-swatch {
+      height: 56px;
+      display: grid;
+      place-items: end center;
+      padding-bottom: 7px;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      color: #65737c;
+      font-size: 10px;
+    }
+
+    .theme-swatch[data-theme="white"] {
+      background: #ffffff;
+      box-shadow: inset 0 0 0 1px #e5eef3;
+    }
+
+    .theme-swatch[data-theme="eye"] {
+      background: #f2f5e9;
+    }
+
+    .theme-swatch[data-theme="night"] {
+      color: #b9c4ca;
+      background: #2f383d;
+    }
+
+    .theme-swatch.active {
+      border-color: #9dc7df;
+    }
+
+    .search-popover {
+      position: absolute;
+      top: 16px;
+      right: 112px;
+      z-index: 35;
+      width: 330px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: #ffffff;
+      box-shadow: 0 14px 38px rgba(75, 103, 119, 0.12);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-8px);
+      transition: opacity 150ms ease, transform 150ms ease;
+    }
+
+    .search-popover.open {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0);
+    }
+
+    .search-field {
+      height: 38px;
+      display: grid;
+      grid-template-columns: 34px 1fr 36px;
+      align-items: center;
+      border-radius: 7px;
+      background: var(--control);
+    }
+
+    .search-field svg {
+      width: 15px;
+      height: 15px;
+      margin: auto;
+      color: var(--muted);
+    }
+
+    .search-field input {
+      width: 100%;
+      border: 0;
+      outline: 0;
+      color: var(--text);
+      background: transparent;
+      font-size: 12px;
+    }
+
+    .search-field input::placeholder {
+      color: var(--faint);
+    }
+
+    .search-count {
+      color: var(--muted);
+      font-size: 10px;
+      text-align: center;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 25;
+      background: rgba(235, 242, 246, 0.28);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    body[data-theme="eye"] {
+      --reader-bg: #f5f6ed;
+      --surface: #fbfcf5;
+      --control: #f0f2e8;
+      --control-hover: #e8ece0;
+      --line: #e3e7d8;
+      --text: #4d5148;
+      --muted: #858a7d;
+      --faint: #aab0a2;
+    }
+
+    body[data-theme="night"] {
+      --reader-bg: #293136;
+      --surface: #313b40;
+      --control: #384348;
+      --control-hover: #424e54;
+      --line: #465157;
+      --text: #d8e0e4;
+      --muted: #a4b0b6;
+      --faint: #7f8c92;
+      --accent: #b7d2df;
+      --accent-soft: #3c4c53;
+      --lime: #58745d;
+      --lime-text: #d5ead4;
+    }
+
+    body[data-theme="night"] .topbar,
+    body[data-theme="night"] .bottom-bar,
+    body[data-theme="night"] .panel,
+    body[data-theme="night"] .search-popover {
+      background: rgba(49, 59, 64, 0.98);
+    }
+
+    body[data-theme="night"] .segment.active {
+      background: #465157;
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        width: calc(100vw - 20px);
+        height: calc(100vh - 20px);
+      }
+
+      .article {
+        width: min(var(--content-width), calc(100% - 56px));
+      }
+
+      .topbar {
+        grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr);
+      }
+
+      .progress-cluster {
+        grid-template-columns: 42px minmax(100px, 1fr) 56px;
+      }
+    }
+  </style>
+</head>
+<body data-theme="white">
+  <main class="app" aria-label="SeaS TXT 阅读界面预览">
+    <aside class="sidebar">
+      <div class="brand-mark" aria-label="SeaS"><span>≋</span></div>
+
+      <nav class="rail-actions" aria-label="阅读工具">
+        <button class="icon-button" aria-label="返回书架" id="backButton"><i data-lucide="arrow-left"></i></button>
+        <button class="icon-button" aria-label="章节目录" id="tocButton"><i data-lucide="list-tree"></i></button>
+        <button class="icon-button" aria-label="书内搜索" id="searchButton"><i data-lucide="search"></i></button>
+        <button class="icon-button" aria-label="加入书签" id="bookmarkButton"><i data-lucide="bookmark"></i></button>
+        <button class="icon-button" aria-label="阅读设置" id="settingsButton"><i data-lucide="sliders-horizontal"></i></button>
+      </nav>
+
+      <div class="rail-spacer"></div>
+
+      <div class="rail-bottom">
+        <button class="icon-button" aria-label="全屏阅读" id="fullscreenButton"><i data-lucide="maximize-2"></i></button>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div class="book-identity">
+          <div class="book-title">银柯尽头的书店</div>
+          <div class="book-author">陆沉舟</div>
+        </div>
+
+        <div class="chapter-position">
+          <div class="chapter-kicker">第 12 章</div>
+          <div class="chapter-title">生于灯塔</div>
+        </div>
+
+        <div class="window-actions">
+          <button class="top-icon" aria-label="最小化"><i data-lucide="minus"></i></button>
+          <button class="top-icon" aria-label="关闭"><i data-lucide="x"></i></button>
+        </div>
+      </header>
+
+      <div class="reader-area">
+        <div class="reading-scroll" id="readingScroll">
+          <article class="article">
+            <header class="article-heading">
+              <span class="chapter-badge">第 12 章</span>
+              <h1>生于灯塔</h1>
+            </header>
+
+            <p>潮水是在凌晨三点退去的。银柯站在防波堤尽头，看见海面上留下了一条淡白色的路，像是谁把月光揉碎以后，安静地铺在了远方。</p>
+            <p>书店的门还没有开。檐下那盏旧灯却亮着，玻璃罩里积着薄薄的盐霜。她用袖口擦了两下，暖黄色的光便重新透出来，照见门牌上已经褪色的三个字。</p>
+            <p>这家书店没有名字。镇上的人只说，沿着海岸一直走，走到能听见灯塔齿轮转动的地方，就会看见它。书架上没有新书，只有被潮气吹得微微卷边的旧册子；每一本书的扉页，都写着一个从未听说过的地名。</p>
+            <p>银柯推门进去时，风铃没有响。柜台后坐着一位白发老人，正低头修补一张海图。他没有抬头，只把一枚铜制书签推到桌边。</p>
+            <p>“今天只借一本。”老人说。</p>
+            <p>“我不是来借书的。”</p>
+            <p>“来到这里的人，一开始都这么说。”</p>
+
+            <div class="article-break"></div>
+
+            <p>灯塔在窗外缓慢地转动。每隔十二秒，一束光越过书架，从房间这一头扫到另一头。光经过某些书脊时，银柯听见了细小的潮声，仿佛那些书里各自藏着一片海。</p>
+            <p>她沿着最里面的书架往前走。第三层的末端空着一个位置，旁边立着一块小小的木牌，上面写着她的名字。</p>
+            <p>银柯伸出手，指尖刚碰到木牌，整座书店忽然轻轻晃了一下。不是地震，更像是一艘停泊太久的船，终于离开了岸。</p>
+            <p>老人合上海图，抬眼看向窗外。远处的灯塔熄灭了一瞬，再亮起时，海面上的月光之路已经延伸到了门前。</p>
+          </article>
+        </div>
+
+        <div class="overlay" id="overlay"></div>
+
+        <aside class="panel toc-panel" id="tocPanel" aria-label="章节目录">
+          <div class="panel-header">
+            <span class="panel-title">章节目录</span>
+            <button class="panel-close" data-close-panel><i data-lucide="x"></i></button>
+          </div>
+          <ol class="toc-list">
+            <li><button class="toc-item"><span class="toc-number">01</span><span>雾从港口升起</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">02</span><span>没有名字的船</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">03</span><span>潮汐表</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">04</span><span>海鸟的来信</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">05</span><span>旧钟楼</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">06</span><span>盐与星光</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">07</span><span>地图之外</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">08</span><span>雨夜来客</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">09</span><span>蓝色车票</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">10</span><span>海岸线以北</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">11</span><span>折叠地图</span></button></li>
+            <li><button class="toc-item active"><span class="toc-number">12</span><span>生于灯塔</span></button></li>
+            <li><button class="toc-item"><span class="toc-number">13</span><span>慢速星云</span></button></li>
+          </ol>
+        </aside>
+
+        <aside class="panel settings-panel" id="settingsPanel" aria-label="阅读设置">
+          <div class="panel-header">
+            <span class="panel-title">阅读设置</span>
+            <button class="panel-close" data-close-panel><i data-lucide="x"></i></button>
+          </div>
+          <div class="settings-content">
+            <section class="setting-group">
+              <span class="setting-label">正文字号</span>
+              <div class="stepper">
+                <button id="fontDown" aria-label="减小字号">−</button>
+                <div class="stepper-value"><span id="fontValue">18</span>&nbsp;px</div>
+                <button id="fontUp" aria-label="增大字号">＋</button>
+              </div>
+            </section>
+
+            <section class="setting-group">
+              <span class="setting-label">行间距</span>
+              <div class="segmented" id="lineHeightControl">
+                <button class="segment" data-line="1.7">紧凑</button>
+                <button class="segment active" data-line="1.95">舒适</button>
+                <button class="segment" data-line="2.2">宽松</button>
+              </div>
+            </section>
+
+            <section class="setting-group">
+              <span class="setting-label">正文宽度</span>
+              <div class="segmented" id="widthControl">
+                <button class="segment" data-width="640">窄</button>
+                <button class="segment active" data-width="720">标准</button>
+                <button class="segment" data-width="800">宽</button>
+              </div>
+            </section>
+
+            <section class="setting-group">
+              <span class="setting-label">阅读主题</span>
+              <div class="theme-grid">
+                <button class="theme-swatch active" data-theme="white">净白</button>
+                <button class="theme-swatch" data-theme="eye">护眼</button>
+                <button class="theme-swatch" data-theme="night">夜间</button>
+              </div>
+            </section>
+          </div>
+        </aside>
+
+        <div class="search-popover" id="searchPopover">
+          <div class="search-field">
+            <i data-lucide="search"></i>
+            <input type="text" placeholder="在本书中搜索..." aria-label="在本书中搜索">
+            <span class="search-count">0 / 0</span>
+          </div>
+        </div>
+      </div>
+
+      <footer class="bottom-bar">
+        <button class="page-action"><i data-lucide="chevron-left"></i><span>上一章</span></button>
+
+        <div class="progress-cluster">
+          <span>38%</span>
+          <div class="progress-track" id="progressTrack" aria-label="阅读进度">
+            <div class="progress-fill" id="progressFill"></div>
+            <div class="progress-thumb" id="progressThumb"></div>
+          </div>
+          <span>127 / 334</span>
+        </div>
+
+        <button class="page-action next"><span>下一章</span><i data-lucide="chevron-right"></i></button>
+      </footer>
+    </section>
+  </main>
+
+  <script>
+    lucide.createIcons();
+
+    const root = document.documentElement;
+    const body = document.body;
+    const overlay = document.getElementById('overlay');
+    const tocPanel = document.getElementById('tocPanel');
+    const settingsPanel = document.getElementById('settingsPanel');
+    const tocButton = document.getElementById('tocButton');
+    const settingsButton = document.getElementById('settingsButton');
+    const searchButton = document.getElementById('searchButton');
+    const searchPopover = document.getElementById('searchPopover');
+    const bookmarkButton = document.getElementById('bookmarkButton');
+    const fullscreenButton = document.getElementById('fullscreenButton');
+    const fontValue = document.getElementById('fontValue');
+
+    let fontSize = 18;
+
+    function closePanels() {
+      tocPanel.classList.remove('open');
+      settingsPanel.classList.remove('open');
+      overlay.classList.remove('visible');
+      tocButton.classList.remove('active');
+      settingsButton.classList.remove('active');
+    }
+
+    function openPanel(panel, button) {
+      const shouldOpen = !panel.classList.contains('open');
+      closePanels();
+      searchPopover.classList.remove('open');
+      searchButton.classList.remove('active');
+      if (shouldOpen) {
+        panel.classList.add('open');
+        overlay.classList.add('visible');
+        button.classList.add('active');
+      }
+    }
+
+    tocButton.addEventListener('click', () => openPanel(tocPanel, tocButton));
+    settingsButton.addEventListener('click', () => openPanel(settingsPanel, settingsButton));
+    overlay.addEventListener('click', closePanels);
+    document.querySelectorAll('[data-close-panel]').forEach((button) => button.addEventListener('click', closePanels));
+
+    searchButton.addEventListener('click', () => {
+      closePanels();
+      searchPopover.classList.toggle('open');
+      searchButton.classList.toggle('active', searchPopover.classList.contains('open'));
+      if (searchPopover.classList.contains('open')) {
+        searchPopover.querySelector('input').focus();
+      }
+    });
+
+    bookmarkButton.addEventListener('click', () => {
+      bookmarkButton.classList.toggle('active');
+      const icon = bookmarkButton.querySelector('svg');
+      icon.style.fill = bookmarkButton.classList.contains('active') ? 'currentColor' : 'none';
+      bookmarkButton.setAttribute('aria-label', bookmarkButton.classList.contains('active') ? '移除书签' : '加入书签');
+    });
+
+    document.getElementById('fontDown').addEventListener('click', () => {
+      fontSize = Math.max(14, fontSize - 1);
+      root.style.setProperty('--font-size', `${fontSize}px`);
+      fontValue.textContent = fontSize;
+    });
+
+    document.getElementById('fontUp').addEventListener('click', () => {
+      fontSize = Math.min(26, fontSize + 1);
+      root.style.setProperty('--font-size', `${fontSize}px`);
+      fontValue.textContent = fontSize;
+    });
+
+    document.querySelectorAll('[data-line]').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('[data-line]').forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        root.style.setProperty('--line-height', button.dataset.line);
+      });
+    });
+
+    document.querySelectorAll('[data-width]').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('[data-width]').forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        root.style.setProperty('--content-width', `${button.dataset.width}px`);
+      });
+    });
+
+    document.querySelectorAll('.theme-swatch').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.theme-swatch').forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        body.dataset.theme = button.dataset.theme;
+      });
+    });
+
+    fullscreenButton.addEventListener('click', async () => {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen?.();
+        fullscreenButton.classList.add('active');
+      } else {
+        await document.exitFullscreen?.();
+        fullscreenButton.classList.remove('active');
+      }
+    });
+
+    document.addEventListener('fullscreenchange', () => {
+      fullscreenButton.classList.toggle('active', Boolean(document.fullscreenElement));
+    });
+
+    document.getElementById('progressTrack').addEventListener('click', (event) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const percent = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
+      document.getElementById('progressFill').style.width = `${percent}%`;
+      document.getElementById('progressThumb').style.left = `${percent}%`;
+      document.querySelector('.progress-cluster > span').textContent = `${Math.round(percent)}%`;
+    });
+
+    document.getElementById('backButton').addEventListener('click', () => {
+      document.getElementById('backButton').classList.add('active');
+      window.setTimeout(() => document.getElementById('backButton').classList.remove('active'), 300);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closePanels();
+        searchPopover.classList.remove('open');
+        searchButton.classList.remove('active');
+      }
+    });
+  </script>
+</body>
+</html>

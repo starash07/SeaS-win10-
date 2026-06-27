@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SeaS</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    :root {
+      --bg: #eaf6ff;
+      --shell: #f9fcff;
+      --main: #f8fbfd;
+      --panel: #ffffff;
+      --ink: #14243a;
+      --text: #3c4b61;
+      --muted: #7b8ba2;
+      --faint: #a9b4c2;
+      --line: #dcebf8;
+      --blue: #4aa3ff;
+      --blue-strong: #1678d8;
+      --blue-dark: #15598f;
+      --blue-soft: #e3f2ff;
+      --fish-bg: #eef3f8;
+      --fish-main: #f7f9fc;
+      --fish-ink: #172033;
+      --fish-accent: #273a5a;
+      --radius: 8px;
+      --font: "Inter", "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: start center;
+      padding: 0;
+      color: var(--ink);
+      background: var(--shell);
+      font-family: var(--font);
+      transition: background 180ms ease, color 180ms ease;
+    }
+
+    body[data-mode="fish"] {
+      color: var(--fish-ink);
+      background: var(--fish-main);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid rgba(74, 163, 255, 0.5);
+      outline-offset: 2px;
+    }
+
+    .app {
+      width: 1120px;
+      height: 720px;
+      display: grid;
+      grid-template-columns: 68px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.92);
+      border-radius: var(--radius);
+      background: rgba(249, 252, 255, 0.93);
+    }
+
+    body[data-mode="fish"] .app {
+      background: rgba(247, 249, 252, 0.95);
+    }
+
+    .sidebar {
+      position: relative;
+      min-width: 0;
+      border-right: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+    }
+
+    body[data-mode="fish"] .sidebar {
+      border-color: #dde4ee;
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .mark {
+      position: absolute;
+      top: 18px;
+      left: 15px;
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(220, 235, 248, 0.92);
+      border-radius: 50%;
+      color: var(--blue-strong);
+      background: #fff;
+      box-shadow: 0 10px 22px rgba(39, 91, 137, 0.08);
+    }
+
+    .seas-logo,
+    .littlefish-logo {
+      grid-area: 1 / 1;
+    }
+
+    .seas-logo {
+      display: grid;
+      place-items: center;
+    }
+
+    .littlefish-logo {
+      width: 29px;
+      height: 29px;
+      display: none;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+
+    body[data-mode="fish"] .mark {
+      border-color: rgba(220, 228, 238, 0.94);
+      box-shadow: 0 10px 22px rgba(23, 32, 51, 0.09);
+    }
+
+    body[data-mode="fish"] .seas-logo {
+      display: none;
+    }
+
+    body[data-mode="fish"] .littlefish-logo {
+      display: block;
+    }
+
+    .nav-stack {
+      position: absolute;
+      top: 104px;
+      left: 0;
+      width: 68px;
+      display: grid;
+      justify-items: center;
+      gap: 16px;
+    }
+
+    .nav-button,
+    .mini-button {
+      position: relative;
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: var(--faint);
+      background: transparent;
+      transition: color 160ms ease, background 160ms ease, transform 160ms ease;
+    }
+
+    .nav-button:hover,
+    .mini-button:hover {
+      color: var(--blue-strong);
+      background: rgba(229, 242, 254, 0.8);
+    }
+
+    .nav-button.active {
+      color: var(--blue-strong);
+      background: rgba(229, 242, 254, 0.92);
+    }
+
+    .nav-button.active::after {
+      content: "";
+      position: absolute;
+      right: -17px;
+      width: 3px;
+      height: 30px;
+      border-radius: 999px;
+      background: var(--blue);
+      box-shadow: 0 6px 14px rgba(74, 163, 255, 0.28);
+    }
+
+    body[data-mode="fish"] .nav-button:hover,
+    body[data-mode="fish"] .mini-button:hover,
+    body[data-mode="fish"] .nav-button.active {
+      color: var(--fish-accent);
+      background: #e8edf5;
+    }
+
+    body[data-mode="fish"] .nav-button.active::after {
+      background: var(--fish-accent);
+      box-shadow: 0 6px 14px rgba(23, 32, 51, 0.18);
+    }
+
+    .mode-orbit {
+      position: absolute;
+      top: 329px;
+      left: 5px;
+      width: 57px;
+      height: 57px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--blue);
+      box-shadow:
+        0 20px 38px rgba(42, 105, 159, 0.14),
+        inset 0 1px 0 rgba(255, 255, 255, 0.35);
+      transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+    }
+
+    .mode-orbit:hover {
+      transform: translateY(-1px);
+      box-shadow:
+        0 24px 42px rgba(42, 105, 159, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.38);
+    }
+
+    body[data-mode="fish"] .mode-orbit {
+      background: var(--fish-accent);
+      box-shadow:
+        0 20px 38px rgba(23, 32, 51, 0.16),
+        inset 0 1px 0 rgba(255, 255, 255, 0.24);
+    }
+
+    .sidebar-bottom {
+      position: absolute;
+      left: 17px;
+      bottom: 17px;
+    }
+
+    svg {
+      width: 18px;
+      height: 18px;
+      stroke-width: 2.2;
+    }
+
+    .main {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: 44px 34px minmax(0, 1fr);
+      gap: 18px;
+      padding: 22px;
+      background: var(--main);
+      overflow: hidden;
+    }
+
+    body[data-mode="fish"] .main {
+      background: var(--fish-main);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 68px minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .name {
+      margin: 0;
+      color: var(--ink);
+      font-size: 28px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    body[data-mode="fish"] .name {
+      color: var(--fish-ink);
+    }
+
+    .search {
+      height: 44px;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 15px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 10px 24px rgba(50, 107, 154, 0.05);
+    }
+
+    body[data-mode="fish"] .search {
+      border-color: #dde4ee;
+      background: rgba(255, 255, 255, 0.78);
+    }
+
+    .search input {
+      width: 100%;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      color: var(--ink);
+      background: transparent;
+      font-size: 13px;
+    }
+
+    .search input::placeholder {
+      color: var(--faint);
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 16px;
+      justify-self: end;
+    }
+
+    .text-button {
+      width: 108px;
+      height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.88);
+      font-size: 14px;
+      font-weight: 780;
+      white-space: nowrap;
+      transition: color 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+
+    .text-button.scan {
+      width: 114px;
+    }
+
+    .text-button:hover {
+      color: var(--blue-dark);
+      border-color: rgba(74, 163, 255, 0.5);
+      background: var(--blue-soft);
+    }
+
+    body[data-mode="fish"] .text-button:hover {
+      color: var(--fish-accent);
+      border-color: #cbd5e3;
+      background: #e8edf5;
+    }
+
+    .filters {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .filter-tabs {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      min-width: 0;
+      overflow: auto;
+      scrollbar-width: none;
+    }
+
+    .filter-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .filter {
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 12px;
+      border-radius: var(--radius);
+      color: var(--muted);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 760;
+      white-space: nowrap;
+      transition: color 160ms ease, background 160ms ease;
+    }
+
+    .filter.active {
+      min-width: 50px;
+      color: var(--blue-dark);
+      background: var(--blue-soft);
+    }
+
+    body[data-mode="fish"] .filter.active {
+      color: var(--fish-accent);
+      background: #e8edf5;
+    }
+
+    .shelf {
+      min-height: 0;
+      overflow: hidden;
+      padding: 9px 0 28px 2px;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .book-rows {
+      display: block;
+    }
+
+    .shelf-section {
+      display: grid;
+      gap: 10px;
+    }
+
+    .shelf-section + .shelf-section {
+      margin-top: 29px;
+    }
+
+    .section-head {
+      width: 1002px;
+      min-height: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 14px;
+      font-weight: 620;
+    }
+
+    .book-row {
+      display: grid;
+      grid-template-columns: repeat(4, 150px);
+      justify-content: start;
+      gap: 16px;
+      min-width: max-content;
+    }
+
+    .book-row:first-child {
+      grid-template-columns: repeat(3, 150px);
+    }
+
+    .book-card {
+      position: relative;
+      width: 150px;
+      height: 212px;
+      display: flex;
+      flex-direction: column;
+      padding: 33px 15px 13px;
+      overflow: hidden;
+      border-radius: var(--radius);
+      color: var(--ink);
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0, 87, 130, 0.05);
+      text-align: left;
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .book-card::before {
+      content: none;
+    }
+
+    .book-card::after {
+      content: none;
+    }
+
+    .book-card:hover,
+    .book-card.active {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(0, 87, 130, 0.09);
+    }
+
+    .book-card.active {
+      box-shadow: 0 10px 24px rgba(0, 87, 130, 0.09);
+    }
+
+    body[data-mode="fish"] .book-card {
+      color: var(--fish-ink);
+      background: #fff;
+      box-shadow: 0 0 10px rgba(25, 35, 53, 0.05);
+    }
+
+    body[data-mode="fish"] .book-card::before {
+      background: linear-gradient(90deg, #60708d, #dfe6ef);
+    }
+
+    body[data-mode="fish"] .book-card::after {
+      background: linear-gradient(135deg, rgba(39, 58, 90, 0.16), rgba(39, 58, 90, 0.03));
+    }
+
+    body[data-mode="fish"] .book-card:hover,
+    body[data-mode="fish"] .book-card.active {
+      box-shadow: 0 10px 24px rgba(25, 35, 53, 0.1);
+    }
+
+    .book-symbol {
+      display: none;
+    }
+
+    body[data-mode="fish"] .book-symbol {
+      color: var(--fish-accent);
+      background: #e8edf5;
+    }
+
+    .book-info {
+      min-width: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .book-info h3 {
+      margin: 0;
+      max-width: 118px;
+      overflow: hidden;
+      color: inherit;
+      font-size: 14px;
+      line-height: 1.42;
+      font-weight: 800;
+      letter-spacing: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+
+    .book-author {
+      max-width: 118px;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 400;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .book-size {
+      width: fit-content;
+      max-width: 118px;
+      overflow: hidden;
+      margin-top: auto;
+      align-self: flex-start;
+      padding: 0;
+      color: #a2a2a2;
+      background: transparent;
+      font-size: 12px;
+      font-weight: 400;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    body[data-mode="fish"] .book-size {
+      color: #8f98a7;
+      background: transparent;
+    }
+
+    .book-card[hidden] {
+      display: none;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        padding: 0;
+        place-items: start;
+      }
+
+      .app {
+        width: 100%;
+        height: 100vh;
+        min-height: 0;
+        grid-template-columns: 1fr;
+        border-radius: 0;
+      }
+
+      .sidebar {
+        height: 68px;
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .mark {
+        top: 14px;
+      }
+
+      .nav-stack {
+        top: 17px;
+        left: 70px;
+        width: auto;
+        grid-auto-flow: column;
+      }
+
+      .nav-button.active::after {
+        right: auto;
+        bottom: -17px;
+        width: 30px;
+        height: 3px;
+      }
+
+      .mode-orbit {
+        top: 5px;
+        left: auto;
+        right: 72px;
+      }
+
+      .sidebar-bottom {
+        top: 17px;
+        right: 17px;
+        bottom: auto;
+        left: auto;
+      }
+
+      .main {
+        grid-template-rows: auto auto minmax(0, 1fr);
+        padding: 16px;
+      }
+
+      .topbar {
+        grid-template-columns: 1fr;
+      }
+
+      .top-actions {
+        justify-self: stretch;
+      }
+
+      .text-button,
+      .text-button.scan {
+        flex: 1;
+        width: auto;
+      }
+
+      .shelf {
+        padding: 24px 0 24px 2px;
+      }
+    }
+  </style>
+</head>
+<body data-mode="leisure">
+  <main class="app" aria-label="SeaS 界面原型">
+    <aside class="sidebar">
+      <div class="mark" aria-label="当前模式标识">
+        <span class="seas-logo"><i data-lucide="waves"></i></span>
+        <img class="littlefish-logo" src="../src/SeaS.App/Assets/littlefish.png" alt="">
+      </div>
+
+      <nav class="nav-stack" aria-label="主导航">
+        <button class="nav-button active" title="书架" aria-label="书架"><i data-lucide="library-big"></i></button>
+        <button class="nav-button" title="最近阅读" aria-label="最近阅读"><i data-lucide="clock-3"></i></button>
+        <button class="nav-button" title="收藏" aria-label="收藏"><i data-lucide="heart"></i></button>
+        <button class="nav-button" title="文件夹" aria-label="文件夹"><i data-lucide="folder"></i></button>
+      </nav>
+
+      <button class="mode-orbit" id="modeToggle" title="切换休闲/摸鱼模式" aria-label="切换休闲/摸鱼模式" aria-pressed="false">
+        <i data-lucide="repeat-2"></i>
+      </button>
+
+      <div class="sidebar-bottom">
+        <button class="mini-button" title="设置" aria-label="设置"><i data-lucide="settings"></i></button>
+      </div>
+    </aside>
+
+    <section class="main">
+      <header class="topbar">
+        <h1 class="name">SeaS</h1>
+
+        <label class="search">
+          <i data-lucide="search"></i>
+          <input id="bookSearch" type="search" placeholder="搜索书名或作者..." aria-label="搜索书名或作者">
+        </label>
+
+        <div class="top-actions">
+          <button class="text-button"><i data-lucide="file-plus"></i>导入文件</button>
+          <button class="text-button scan"><i data-lucide="folder-plus"></i>扫描文件夹</button>
+        </div>
+      </header>
+
+      <section class="filters" aria-label="书籍筛选">
+        <div class="filter-tabs">
+          <button class="filter active" data-filter="all">全部</button>
+          <button class="filter" data-filter="recent">最近</button>
+          <button class="filter" data-filter="favorite">收藏</button>
+          <button class="filter" data-filter="txt">TXT</button>
+        </div>
+      </section>
+
+      <section class="shelf" aria-label="本地书架">
+        <div class="book-rows">
+          <section class="shelf-section">
+            <div class="section-head">
+              <span>最近打开</span>
+            </div>
+
+            <div class="book-row">
+            <button class="book-card" data-title="银河尽头的书店" data-author="陆沉舟" data-tags="reading recent txt favorite">
+              <span class="book-symbol"><i data-lucide="book-open"></i></span>
+              <span class="book-info">
+                <h3>银河尽头的书店</h3>
+                <span class="book-author">陆沉舟</span>
+              </span>
+              <span class="book-size">1.8 MB</span>
+            </button>
+
+            <button class="book-card" data-title="银河尽头的书店" data-author="陆沉舟" data-tags="recent txt">
+              <span class="book-symbol"><i data-lucide="book-open"></i></span>
+              <span class="book-info">
+                <h3>银河尽头的书店</h3>
+                <span class="book-author">陆沉舟</span>
+              </span>
+              <span class="book-size">1.8 MB</span>
+            </button>
+
+            <button class="book-card" data-title="银河尽头的书店" data-author="陆沉舟" data-tags="txt favorite">
+              <span class="book-symbol"><i data-lucide="book-open"></i></span>
+              <span class="book-info">
+                <h3>银河尽头的书店</h3>
+                <span class="book-author">陆沉舟</span>
+              </span>
+              <span class="book-size">1.8 MB</span>
+            </button>
+            </div>
+          </section>
+
+          <section class="shelf-section">
+            <div class="section-head">
+              <span>我的书架</span>
+              <span>共 48 本</span>
+            </div>
+
+            <div class="book-row">
+            <button class="book-card" data-title="银河尽头的书店" data-author="陆沉舟" data-tags="txt">
+              <span class="book-symbol"><i data-lucide="book-open"></i></span>
+              <span class="book-info">
+                <h3>银河尽头的书店</h3>
+                <span class="book-author">陆沉舟</span>
+              </span>
+              <span class="book-size">1.8 MB</span>
+            </button>
+
+            <button class="book-card" data-title="银河尽头的书店" data-author="陆沉舟" data-tags="reading txt">
+              <span class="book-symbol"><i data-lucide="book-open"></i></span>
+              <span class="book-info">
+                <h3>银河尽头的书店</h3>
+                <span class="book-author">陆沉舟</span>
+              </span>
+              <span class="book-size">1.8 MB</span>
+            </button>
+
+            <button class="book-card" data-title="银河尽头的书店" data-author="陆沉舟" data-tags="favorite txt">
+              <span class="book-symbol"><i data-lucide="book-open"></i></span>
+              <span class="book-info">
+                <h3>银河尽头的书店</h3>
+                <span class="book-author">陆沉舟</span>
+              </span>
+              <span class="book-size">1.8 MB</span>
+            </button>
+
+            <button class="book-card" data-title="银河尽头的书店" data-author="陆沉舟" data-tags="recent txt">
+              <span class="book-symbol"><i data-lucide="book-open"></i></span>
+              <span class="book-info">
+                <h3>银河尽头的书店</h3>
+                <span class="book-author">陆沉舟</span>
+              </span>
+              <span class="book-size">1.8 MB</span>
+            </button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const modeToggle = document.querySelector("#modeToggle");
+    const searchInput = document.querySelector("#bookSearch");
+    const cards = Array.from(document.querySelectorAll(".book-card"));
+    const filters = Array.from(document.querySelectorAll(".filter"));
+    let activeFilter = "all";
+
+    function refreshIcons() {
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+    }
+
+    function setMode(mode) {
+      document.body.dataset.mode = mode;
+      const isFish = mode === "fish";
+      modeToggle.setAttribute("aria-pressed", String(isFish));
+      modeToggle.title = isFish ? "切换到休闲模式" : "切换到摸鱼模式";
+      modeToggle.setAttribute("aria-label", modeToggle.title);
+      refreshIcons();
+    }
+
+    function applyFilters() {
+      const keyword = searchInput.value.trim().toLowerCase();
+
+      cards.forEach((card) => {
+        const title = card.dataset.title.toLowerCase();
+        const author = card.dataset.author.toLowerCase();
+        const tags = card.dataset.tags.split(" ");
+        const matchesKeyword = !keyword || title.includes(keyword) || author.includes(keyword);
+        const matchesFilter = activeFilter === "all" || tags.includes(activeFilter);
+        card.hidden = !(matchesKeyword && matchesFilter);
+      });
+    }
+
+    modeToggle.addEventListener("click", () => {
+      setMode(document.body.dataset.mode === "leisure" ? "fish" : "leisure");
+    });
+
+    cards.forEach((card) => {
+      card.addEventListener("click", () => {
+        cards.forEach((item) => item.classList.remove("active"));
+        card.classList.add("active");
+      });
+    });
+
+    filters.forEach((filter) => {
+      filter.addEventListener("click", () => {
+        filters.forEach((item) => item.classList.remove("active"));
+        filter.classList.add("active");
+        activeFilter = filter.dataset.filter;
+        applyFilters();
+      });
+    });
+
+    searchInput.addEventListener("input", applyFilters);
+    refreshIcons();
+  </script>
+</body>
+</html>
