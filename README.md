@@ -103,10 +103,3 @@ dotnet build .\SeaS.sln -c Debug --no-restore
 ```powershell
 dotnet run --project .\src\SeaS.App\SeaS.App.csproj
 ```
-
-## 当前开发顺序
-
-1. 验收普通阅读器的分页稳定性、搜索结果列表、书签命名和自动翻页。
-2. 完成书架管理：排序、多选批量操作、自定义分组、封面和丢失文件重新定位。
-3. 完成应用设置、测试及 1.0 发布流程。
-4. 提醒并收尾 LittleFish 集成。
