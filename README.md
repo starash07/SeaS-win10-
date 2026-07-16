@@ -1,6 +1,6 @@
 # SeaS
 
-SeaS 是一个面向本地 TXT 书籍的 Windows 桌面书架和阅读器，使用 C#、WPF 与 .NET 8 开发。当前目标版本为 1.0.0。
+SeaS 是一个面向本地 TXT 书籍的 Windows 桌面书架和阅读器，使用 C#、WPF 与 .NET 8 开发。当前目标版本为 1.0.1。
 
 ## 产品原则
 
