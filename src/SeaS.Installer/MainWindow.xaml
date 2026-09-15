@@ -1,0 +1,518 @@
+<Window x:Class="SeaS.Installer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="安装 SeaS"
+        Width="760"
+        Height="580"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#334955" />
+        <SolidColorBrush x:Key="SecondaryTextBrush" Color="#78909C" />
+        <SolidColorBrush x:Key="FaintTextBrush" Color="#A7BBC5" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#7DAFD5" />
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#6A9FC9" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#F6FAFC" />
+        <SolidColorBrush x:Key="LineBrush" Color="#E1EDF3" />
+
+        <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="22,0" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="9">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource AccentHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.82" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="38" />
+            <Setter Property="Padding" Value="18,0" />
+            <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+            <Setter Property="Background" Value="#F0F6F9" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="9">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#E5F0F5" />
+                                <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.78" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CloseButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Foreground" Value="#9CB0BA" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="16">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#F2F6F8" />
+                                <Setter Property="Foreground" Value="#647B87" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="InstallerCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="20" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Box"
+                                    Width="16"
+                                    Height="16"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="White"
+                                    BorderBrush="#C9DCE5"
+                                    BorderThickness="1"
+                                    CornerRadius="5">
+                                <TextBlock x:Name="Tick"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           FontFamily="Segoe UI Symbol"
+                                           FontSize="11"
+                                           Foreground="White"
+                                           Text="✓"
+                                           Visibility="Collapsed" />
+                            </Border>
+                            <ContentPresenter Grid.Column="1"
+                                              VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="InstallerRadioButtonStyle" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="20" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="DotBorder"
+                                    Width="16"
+                                    Height="16"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="White"
+                                    BorderBrush="#C9DCE5"
+                                    BorderThickness="1"
+                                    CornerRadius="8">
+                                <Ellipse x:Name="Dot"
+                                         Width="8"
+                                         Height="8"
+                                         Fill="{StaticResource AccentBrush}"
+                                         Visibility="Collapsed" />
+                            </Border>
+                            <ContentPresenter Grid.Column="1" VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="DotBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="DotBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="WindowRoot"
+            Background="White"
+            BorderBrush="#D8E7EE"
+            BorderThickness="1"
+            CornerRadius="16"
+            ClipToBounds="True">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="248" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Background="#E9F3FD"
+                    CornerRadius="15,0,0,15"
+                    SnapsToDevicePixels="True">
+                <Grid Margin="30,50,30,30">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel VerticalAlignment="Center">
+                        <Border Width="94"
+                                Height="94"
+                                HorizontalAlignment="Left"
+                                Background="Transparent"
+                                CornerRadius="25">
+                            <Image Source="Assets/seas.png"
+                                   Stretch="Uniform" />
+                        </Border>
+                        <TextBlock Margin="0,24,0,0"
+                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                   FontFamily="Georgia"
+                                   FontSize="33"
+                                   FontWeight="Normal"
+                                   TextOptions.TextFormattingMode="Ideal"
+                                   TextOptions.TextRenderingMode="ClearType"
+                                   Text="SeaS" />
+                        <TextBlock Margin="1,7,0,0"
+                                   Foreground="#7898AA"
+                                   FontFamily="Microsoft YaHei UI"
+                                   FontSize="12.5"
+                                   FontWeight="Light"
+                                   LineHeight="22"
+                                   TextOptions.TextFormattingMode="Ideal"
+                                   TextOptions.TextRenderingMode="ClearType"
+                                   Text="安静、轻盈的本地阅读器" />
+
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal">
+                        <Border Padding="9,4" Background="#CFFFFFFF" CornerRadius="8">
+                            <TextBlock Foreground="#7795A6" FontSize="10.5" Text="本地安装" />
+                        </Border>
+                        <TextBlock x:Name="InstallerVersionText"
+                                   Margin="10,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="#94ACB8"
+                                   FontSize="10.5"
+                                   Text="V1.1.0" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Column="1" Margin="42,52,42,32">
+                <Grid x:Name="SetupPage">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel>
+                        <TextBlock x:Name="SetupTitleText" Foreground="{StaticResource PrimaryTextBrush}"
+                                   FontSize="24"
+                                   FontWeight="SemiBold"
+                                   Text="准备安装 SeaS" />
+                        <TextBlock x:Name="SetupDescriptionText" Margin="0,8,0,0"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   FontSize="12.5"
+                                   TextWrapping="Wrap"
+                                   Text="确认安装位置和快捷方式，然后开始安装。" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Margin="0,28,0,0">
+                        <TextBlock Foreground="{StaticResource PrimaryTextBrush}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Text="安装范围" />
+                        <Border Margin="0,9,0,0"
+                                Padding="16,12"
+                                Background="#FBFDFE"
+                                BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12">
+                            <StackPanel x:Name="InstallScopeOptions">
+                                <RadioButton x:Name="CurrentUserRadioButton"
+                                             IsChecked="True"
+                                             GroupName="InstallScope"
+                                             Style="{StaticResource InstallerRadioButtonStyle}"
+                                             Content="仅为我安装"
+                                             Checked="InstallScopeRadioButton_Checked" />
+                                <RadioButton x:Name="AllUsersRadioButton"
+                                             Margin="0,11,0,0"
+                                             GroupName="InstallScope"
+                                             Style="{StaticResource InstallerRadioButtonStyle}"
+                                             Checked="InstallScopeRadioButton_Checked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center"
+                                                   Text="为使用这台电脑的所有用户安装" />
+                                        <TextBlock Margin="7,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="#86A8BA"
+                                                   FontSize="11.5"
+                                                   Text="（管理员）" />
+                                    </StackPanel>
+                                </RadioButton>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Foreground="{StaticResource PrimaryTextBrush}"
+                                   Margin="0,16,0,0"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Text="安装位置" />
+                        <Border Margin="0,9,0,0"
+                                Height="42"
+                                Background="{StaticResource SurfaceBrush}"
+                                BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="74" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="InstallPathTextBox"
+                                         Margin="13,0,8,0"
+                                         VerticalContentAlignment="Center"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Foreground="#5F7784"
+                                         FontSize="12"
+                                         Text="C:\Program Files\SeaS" />
+                                <Button x:Name="BrowseInstallPathButton" Grid.Column="1"
+                                        Margin="4"
+                                        Style="{StaticResource SecondaryButtonStyle}"
+                                        Height="32"
+                                        Padding="10,0"
+                                        Content="浏览"
+                                        Click="BrowseButton_Click" />
+                            </Grid>
+                        </Border>
+
+                        <Border Margin="0,20,0,0"
+                                Padding="16,14"
+                                Background="#FBFDFE"
+                                BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1"
+                                CornerRadius="12">
+                            <StackPanel>
+                                <CheckBox x:Name="CreateDesktopShortcutCheckBox"
+                                          IsChecked="True"
+                                          Style="{StaticResource InstallerCheckBoxStyle}"
+                                          Content="创建桌面快捷方式" />
+                                <CheckBox x:Name="CreateStartMenuShortcutCheckBox"
+                                          Margin="0,13,0,0"
+                                          IsChecked="True"
+                                          Style="{StaticResource InstallerCheckBoxStyle}"
+                                          Content="添加到开始菜单" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Margin="0,18,0,0"
+                                Padding="13,9"
+                                Background="#F6FAFC"
+                                CornerRadius="9">
+                            <TextBlock Foreground="{StaticResource FaintTextBrush}"
+                                       FontSize="11"
+                                       Text="书架、阅读进度和设置保存在当前用户的本地数据目录。" />
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2"
+                                HorizontalAlignment="Right"
+                                Orientation="Horizontal">
+                        <Button Margin="0,0,10,0"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Content="取消"
+                                Click="CancelButton_Click" />
+                        <Button x:Name="StartInstallButton" Width="108"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Content="开始安装"
+                                Click="InstallButton_Click" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid x:Name="ProgressPage" Visibility="Collapsed" Opacity="0">
+                    <StackPanel VerticalAlignment="Center">
+                        <Border Width="74"
+                                Height="74"
+                                HorizontalAlignment="Center"
+                                Background="#F0F7FB"
+                                CornerRadius="24">
+                            <TextBlock HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontFamily="Segoe MDL2 Assets"
+                                       FontSize="27"
+                                       Foreground="{StaticResource AccentBrush}"
+                                       Text="&#xE896;" />
+                        </Border>
+                        <TextBlock Margin="0,24,0,0"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                   FontSize="22"
+                                   FontWeight="SemiBold"
+                                   Text="正在准备 SeaS" />
+                        <TextBlock x:Name="ProgressStatusText"
+                                   Margin="0,8,0,0"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   FontSize="12.5"
+                                   Text="检查安装设置…" />
+                        <ProgressBar x:Name="InstallProgressBar"
+                                     Width="340"
+                                     Height="7"
+                                     Margin="0,30,0,0"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Value="0"
+                                     Foreground="{StaticResource AccentBrush}"
+                                     Background="#EDF4F7"
+                                     BorderThickness="0" />
+                        <TextBlock Margin="0,18,0,0"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource FaintTextBrush}"
+                                   FontSize="11"
+                                   Text="正在写入程序文件，请勿关闭安装窗口。" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid x:Name="CompletePage" Visibility="Collapsed" Opacity="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <Border Width="78"
+                                Height="78"
+                                HorizontalAlignment="Center"
+                                Background="#F0F8F1"
+                                CornerRadius="26">
+                            <TextBlock HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       FontFamily="Segoe UI Symbol"
+                                       FontSize="31"
+                                       Foreground="#86B995"
+                                       Text="✓" />
+                        </Border>
+                        <TextBlock Margin="0,24,0,0"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                   FontSize="23"
+                                   FontWeight="SemiBold"
+                                   Text="SeaS 安装完成" />
+                        <TextBlock Margin="0,9,0,0"
+                                   HorizontalAlignment="Center"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   FontSize="12.5"
+                                   Text="现在可以打开 SeaS，继续整理和阅读本地书籍。" />
+                    </StackPanel>
+                    <Grid Grid.Row="1">
+                        <CheckBox x:Name="LaunchAfterInstallCheckBox"
+                                  VerticalAlignment="Center"
+                                  IsChecked="True"
+                                  Style="{StaticResource InstallerCheckBoxStyle}"
+                                  Content="安装完成后打开 SeaS" />
+                        <Button Width="108"
+                                HorizontalAlignment="Right"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Content="完成"
+                                Click="CompleteButton_Click" />
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <Grid Grid.ColumnSpan="2"
+                  Height="42"
+                  VerticalAlignment="Top"
+                  Background="Transparent"
+                  MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Button Margin="0,5,10,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource CloseButtonStyle}"
+                        ToolTip="关闭"
+                        Click="CloseButton_Click">
+                    <TextBlock FontFamily="Segoe MDL2 Assets"
+                               FontSize="10"
+                               Text="&#xE711;" />
+                </Button>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

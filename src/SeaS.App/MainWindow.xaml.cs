@@ -2,12 +2,16 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using SeaS.App.Models;
@@ -20,6 +24,19 @@ namespace SeaS.App;
 
 public partial class MainWindow : Window, INotifyPropertyChanged
 {
+    private const string BookDragDataFormat = "SeaS.BookItem";
+    private static readonly string[] SupportedBookExtensions = [".txt", ".epub", ".md", ".markdown"];
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out NativePoint point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+    }
+
     private static readonly HashSet<string> AllBooksSortModes =
     [
         "recent",
@@ -41,7 +58,16 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private WindowState _windowStateBeforeTray = WindowState.Normal;
     private BookItem? _contextBook;
     private BookItem? _selectedBook;
+    private BookItem? _bookDragCandidate;
+    private Point _bookDragStartPoint;
+    private bool _ignoreBookClickAfterDrag;
+    private bool _isBookDragging;
+    private Popup? _bookDragPopup;
     private Forms.NotifyIcon? _trayIcon;
+    private TrayMenuWindow? _trayMenuWindow;
+    private Process? _hostedLittleFishProcess;
+    private string? _hostedLittleFishPipeName;
+    private bool _isClosingHostedLittleFishForExit;
     private bool _windowPlacementReady;
 
     public ObservableCollection<BookItem> ShelfBooks { get; } = [];
@@ -69,7 +95,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         InitializeComponent();
         DataContext = this;
-        InitializeTrayIcon();
         System.Windows.Application.Current.SessionEnding += (_, _) => _exitRequested = true;
 
         _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2.4) };
@@ -87,6 +112,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
 
         _state = LibraryStore.Load();
+        InitializeTrayIcon();
         RestoreWindowPlacement();
         _windowPlacementReady = true;
         LocationChanged += (_, _) => ScheduleWindowPlacementSave();
@@ -106,6 +132,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         SetMode(_state.Mode == "fish" ? "fish" : "leisure", save: false);
         InitializeLibraryToolState();
         RefreshViews();
+        Dispatcher.BeginInvoke(() => UpdateTopTabSelectionSlider(animate: false), DispatcherPriority.Loaded);
     }
 
     private void InitializeLibraryToolState()
@@ -173,7 +200,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (isLibraryEmpty)
         {
             EmptyStateTitle.Text = "书架还是空的";
-            EmptyStateHint.Text = "拖入 TXT 文件，或从左侧导入";
+            EmptyStateHint.Text = "拖入 TXT / EPUB / Markdown 文件，或从左侧导入";
         }
         else if (!string.IsNullOrWhiteSpace(keyword))
         {
@@ -212,6 +239,29 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (_state.Groups is null)
         {
             _state.Groups = [];
+            changed = true;
+        }
+
+        if (_state.Bookmarks is null)
+        {
+            _state.Bookmarks = [];
+            changed = true;
+        }
+
+        if (_state.ReaderPreferences is null)
+        {
+            _state.ReaderPreferences = new ReaderPreferences();
+            changed = true;
+        }
+
+        if (_state.ShortcutPreferences is null)
+        {
+            _state.ShortcutPreferences = new ReaderShortcutPreferences();
+            changed = true;
+        }
+
+        if (_state.ShortcutPreferences.Normalize())
+        {
             changed = true;
         }
 
@@ -439,13 +489,65 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         {
             toggle.IsChecked = string.Equals(toggle.CommandParameter?.ToString(), filter, StringComparison.OrdinalIgnoreCase);
         }
+
+        UpdateTopTabSelectionSlider(animate: true);
+    }
+
+    private void UpdateTopTabSelectionSlider(bool animate)
+    {
+        if (ShelfTabsHost.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        var selected = new[] { AllBooksTab, GroupedBooksTab, FavoriteBooksTab }
+            .FirstOrDefault(tab => tab.IsChecked == true);
+
+        if (selected is null)
+        {
+            return;
+        }
+
+        if (!IsLoaded || selected.ActualWidth <= 0 || ShelfTabsHost.ActualWidth <= 0)
+        {
+            Dispatcher.BeginInvoke(() => UpdateTopTabSelectionSlider(animate: false), DispatcherPriority.Loaded);
+            return;
+        }
+
+        var targetX = selected.TransformToAncestor(ShelfTabsHost).Transform(new Point(0, 0)).X;
+        var targetWidth = selected.ActualWidth;
+
+        if (!animate)
+        {
+            TopTabSelectionSlider.BeginAnimation(FrameworkElement.WidthProperty, null);
+            TopTabSelectionSliderTransform.BeginAnimation(TranslateTransform.XProperty, null);
+            TopTabSelectionSlider.Width = targetWidth;
+            TopTabSelectionSliderTransform.X = targetX;
+            return;
+        }
+
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        TopTabSelectionSlider.BeginAnimation(
+            FrameworkElement.WidthProperty,
+            new DoubleAnimation(TopTabSelectionSlider.ActualWidth > 0 ? TopTabSelectionSlider.ActualWidth : TopTabSelectionSlider.Width, targetWidth, TimeSpan.FromMilliseconds(210))
+            {
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
+        TopTabSelectionSliderTransform.BeginAnimation(
+            TranslateTransform.XProperty,
+            new DoubleAnimation(TopTabSelectionSliderTransform.X, targetX, TimeSpan.FromMilliseconds(210))
+            {
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
     }
 
     private void UpdateTopNavigationVisuals()
     {
         var isRecent = _activeFilter == "recent";
         var isGrouped = _activeFilter == "groups";
-        ShelfTabsPanel.Visibility = isRecent ? Visibility.Collapsed : Visibility.Visible;
+        ShelfTabsHost.Visibility = isRecent ? Visibility.Collapsed : Visibility.Visible;
         RecentViewTitle.Visibility = isRecent ? Visibility.Visible : Visibility.Collapsed;
         GroupPageActionsPanel.Visibility = isGrouped ? Visibility.Visible : Visibility.Collapsed;
 
@@ -705,9 +807,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var result = MessageBox.Show(
+        var result = SeaSMessageBox.Show(
             this,
-            $"从书架移除选中的 {selectedBooks.Count} 本书？\n原 TXT 文件不会被删除。",
+            $"从书架移除选中的 {selectedBooks.Count} 本书？\n原文件不会被删除。",
             "SeaS",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Question);
@@ -729,6 +831,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void CheckMissingBooks_Click(object sender, RoutedEventArgs e)
     {
+        var missingBooks = GetMissingBooks(refreshViews: true);
+        if (missingBooks.Count == 0)
+        {
+            ShowToast("没有发现失效书籍");
+            return;
+        }
+
+        ShowMissingBooksCleanupDialog(missingBooks);
+    }
+
+    private List<BookItem> GetMissingBooks(bool refreshViews)
+    {
         var missingBooks = new List<BookItem>();
         foreach (var book in _state.Books)
         {
@@ -739,11 +853,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
         }
 
-        RefreshViews();
+        if (refreshViews)
+        {
+            RefreshViews();
+        }
+
+        return missingBooks;
+    }
+
+    private bool ShowMissingBooksCleanupDialog(IEnumerable<BookItem>? knownMissingBooks = null)
+    {
+        var missingBooks = knownMissingBooks?.ToList() ?? GetMissingBooks(refreshViews: true);
         if (missingBooks.Count == 0)
         {
             ShowToast("没有发现失效书籍");
-            return;
+            return false;
         }
 
         var dialog = new MissingBooksWindow(missingBooks)
@@ -752,7 +876,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         };
         if (dialog.ShowDialog() != true || dialog.SelectedBooks.Count == 0)
         {
-            return;
+            return false;
         }
 
         foreach (var book in dialog.SelectedBooks)
@@ -762,15 +886,90 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SaveState();
         RefreshViews();
-        ShowToast($"已移除 {dialog.SelectedBooks.Count} 本失效书籍");
+        ShowToast($"已清理 {dialog.SelectedBooks.Count} 本失效书籍");
+        return true;
+    }
+
+    private bool HandleMissingBook(BookItem book)
+    {
+        RefreshViews();
+        var dialog = new MissingBookActionWindow(book.Title)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return false;
+        }
+
+        switch (dialog.SelectedAction)
+        {
+            case MissingBookAction.Relocate:
+                return RelocateBookFile(book);
+            case MissingBookAction.CleanMissing:
+                ShowMissingBooksCleanupDialog();
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    private bool RelocateBookFile(BookItem book)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Title = $"定位《{book.Title}》的新文件",
+            Filter = "文本与电子书 (*.txt;*.epub;*.md;*.markdown)|*.txt;*.epub;*.md;*.markdown|TXT 文本文件 (*.txt)|*.txt|EPUB 电子书 (*.epub)|*.epub|Markdown 文件 (*.md;*.markdown)|*.md;*.markdown",
+            Multiselect = false,
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return false;
+        }
+
+        var fullPath = Path.GetFullPath(dialog.FileName);
+        if (!IsSupportedBookFile(fullPath))
+        {
+            SeaSMessageBox.Show(this, "请选择 TXT、EPUB 或 Markdown 文件。", "SeaS", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        var duplicate = _state.Books.FirstOrDefault(item =>
+            !ReferenceEquals(item, book)
+            && string.Equals(Path.GetFullPath(item.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
+        if (duplicate is not null)
+        {
+            SeaSMessageBox.Show(this, $"这个文件已经在书架中：\n《{duplicate.Title}》", "SeaS", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        try
+        {
+            var fileInfo = new FileInfo(fullPath);
+            book.FilePath = fullPath;
+            book.FileSize = fileInfo.Length;
+            book.RefreshFileState();
+            SaveState();
+            RefreshViews();
+            ShowToast("已重新定位原文件");
+            return true;
+        }
+        catch (Exception exception)
+        {
+            SeaSMessageBox.Show(this, $"重新定位失败：{exception.Message}", "SeaS", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
     }
 
     private void ImportFiles_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
-            Title = "导入 TXT 文件",
-            Filter = "TXT 文本文件 (*.txt)|*.txt",
+            Title = "导入书籍文件",
+            Filter = "文本与电子书 (*.txt;*.epub;*.md;*.markdown)|*.txt;*.epub;*.md;*.markdown|TXT 文本文件 (*.txt)|*.txt|EPUB 电子书 (*.epub)|*.epub|Markdown 文件 (*.md;*.markdown)|*.md;*.markdown",
             Multiselect = true,
             CheckFileExists = true
         };
@@ -785,7 +984,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         var dialog = new OpenFolderDialog
         {
-            Title = "选择包含 TXT 书籍的文件夹",
+            Title = "选择包含书籍文件的文件夹",
             Multiselect = false
         };
 
@@ -800,7 +999,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var files = new List<string>();
         foreach (var path in paths)
         {
-            if (File.Exists(path) && string.Equals(Path.GetExtension(path), ".txt", StringComparison.OrdinalIgnoreCase))
+            if (File.Exists(path) && IsSupportedBookFile(path))
             {
                 files.Add(path);
                 continue;
@@ -813,7 +1012,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             try
             {
-                files.AddRange(Directory.EnumerateFiles(path, "*.txt", SearchOption.AllDirectories));
+                files.AddRange(Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories)
+                    .Where(IsSupportedBookFile));
             }
             catch (UnauthorizedAccessException)
             {
@@ -839,12 +1039,13 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             }
 
             var fileInfo = new FileInfo(fullPath);
-            var (title, author) = BookMetadata.FromFileName(Path.GetFileNameWithoutExtension(fullPath));
+            var (title, author, coverImagePath) = ReadImportedBookMetadata(fullPath);
             _state.Books.Add(new BookItem
             {
                 Title = title,
                 Author = author,
                 FilePath = fullPath,
+                CoverImagePath = coverImagePath,
                 FileSize = fileInfo.Length,
                 AddedAt = DateTime.Now
             });
@@ -853,12 +1054,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SaveState();
         RefreshViews();
-        ShowToast(addedCount > 0 ? $"已导入 {addedCount} 本书" : "没有发现新的 TXT 文件");
+        ShowToast(addedCount > 0 ? $"已导入 {addedCount} 本书" : "没有发现新的书籍文件");
     }
 
     private void Window_PreviewDragOver(object sender, WpfDragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        if (_activeFilter == "groups" && e.Data.GetDataPresent(BookDragDataFormat))
+        {
+            e.Effects = DragDropEffects.Copy;
+            return;
+        }
+
+        e.Effects = HasImportableDropData(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
@@ -866,8 +1073,133 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths)
         {
-            ImportPaths(paths);
+            if (paths.Any(IsImportablePath))
+            {
+                ImportPaths(paths);
+            }
+            else
+            {
+                ShowToast("请拖入 TXT、EPUB、Markdown 文件，或包含这些文件的文件夹");
+            }
+
+            e.Handled = true;
         }
+    }
+
+    private static bool HasImportableDropData(IDataObject data)
+    {
+        return data.GetDataPresent(DataFormats.FileDrop)
+            && data.GetData(DataFormats.FileDrop) is string[] paths
+            && paths.Any(IsImportablePath);
+    }
+
+    private static bool IsImportablePath(string path)
+    {
+        return (File.Exists(path) && IsSupportedBookFile(path))
+            || Directory.Exists(path);
+    }
+
+    private static bool IsSupportedBookFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return SupportedBookExtensions.Any(supported =>
+            string.Equals(extension, supported, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsTxtBook(BookItem book)
+    {
+        return string.Equals(Path.GetExtension(book.FilePath), ".txt", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsMarkdownBook(BookItem book)
+    {
+        var extension = Path.GetExtension(book.FilePath);
+        return string.Equals(extension, ".md", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(extension, ".markdown", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsEpubBook(BookItem book)
+    {
+        return string.Equals(Path.GetExtension(book.FilePath), ".epub", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool SupportsLittleFish(BookItem book)
+    {
+        return IsTxtBook(book);
+    }
+
+    private static string GetBookFormatName(BookItem book)
+    {
+        if (IsEpubBook(book))
+        {
+            return "EPUB";
+        }
+
+        if (IsMarkdownBook(book))
+        {
+            return "Markdown";
+        }
+
+        return string.IsNullOrWhiteSpace(book.Extension) ? "该" : book.Extension;
+    }
+
+    private (string Title, string Author, string CoverImagePath) ReadImportedBookMetadata(string fullPath)
+    {
+        if (string.Equals(Path.GetExtension(fullPath), ".epub", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var metadata = EpubBookReader.ReadMetadata(fullPath);
+                var coverImagePath = SaveImportedEpubCover(fullPath, metadata.CoverImageBytes);
+                return (metadata.Title, metadata.Author, coverImagePath);
+            }
+            catch
+            {
+            }
+        }
+
+        var (title, author) = BookMetadata.FromFileName(Path.GetFileNameWithoutExtension(fullPath));
+        return (title, author, string.Empty);
+    }
+
+    private static string SaveImportedEpubCover(string sourcePath, byte[]? coverImageBytes)
+    {
+        if (coverImageBytes is null || coverImageBytes.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        Directory.CreateDirectory(LibraryStore.CoverDirectory);
+        var extension = DetectImageExtension(coverImageBytes);
+        var coverPath = Path.Combine(
+            LibraryStore.CoverDirectory,
+            $"{Path.GetFileNameWithoutExtension(sourcePath)}-{Guid.NewGuid():N}{extension}");
+        File.WriteAllBytes(coverPath, coverImageBytes);
+        return coverPath;
+    }
+
+    private static string DetectImageExtension(byte[] bytes)
+    {
+        if (bytes.Length >= 4
+            && bytes[0] == 0x89
+            && bytes[1] == 0x50
+            && bytes[2] == 0x4E
+            && bytes[3] == 0x47)
+        {
+            return ".png";
+        }
+
+        if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+        {
+            return ".jpg";
+        }
+
+        if (bytes.Length >= 3 && bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46)
+        {
+            return ".gif";
+        }
+
+        return ".img";
     }
 
     private void Window_PreviewMouseDown(object sender, MouseButtonEventArgs e)
@@ -894,6 +1226,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private void BookCard_Click(object sender, RoutedEventArgs e)
     {
+        if (_ignoreBookClickAfterDrag)
+        {
+            e.Handled = true;
+            return;
+        }
+
         if ((sender as FrameworkElement)?.DataContext is BookItem book)
         {
             if (IsBulkMode && _activeFilter == "all")
@@ -905,6 +1243,326 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
             _selectedBook = book;
             OpenBook(book, _state.Mode == "fish");
+        }
+    }
+
+    private void BookCard_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _bookDragCandidate = null;
+
+        if (_activeFilter != "groups" || IsBulkMode)
+        {
+            return;
+        }
+
+        if (FindAncestor<ButtonBase>(e.OriginalSource as DependencyObject) is { } sourceButton
+            && !ReferenceEquals(sourceButton, sender))
+        {
+            return;
+        }
+
+        if ((sender as FrameworkElement)?.DataContext is not BookItem book)
+        {
+            return;
+        }
+
+        _bookDragCandidate = book;
+        _bookDragStartPoint = e.GetPosition(null);
+    }
+
+    private void BookCard_PreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_bookDragCandidate is null || e.LeftButton != MouseButtonState.Pressed || _activeFilter != "groups")
+        {
+            return;
+        }
+
+        var currentPosition = e.GetPosition(null);
+        if (Math.Abs(currentPosition.X - _bookDragStartPoint.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(currentPosition.Y - _bookDragStartPoint.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        if (sender is not FrameworkElement dragElement)
+        {
+            _bookDragCandidate = null;
+            return;
+        }
+
+        var draggedBook = _bookDragCandidate;
+        var data = new DataObject(BookDragDataFormat, draggedBook);
+        _isBookDragging = true;
+        ShowBookDragPopup(dragElement);
+        AnimateBookDragFeedback(dragElement, isDragging: true);
+        UpdateBookDragPopupPosition();
+
+        try
+        {
+            DragDrop.DoDragDrop(dragElement, data, DragDropEffects.Copy);
+        }
+        finally
+        {
+            _isBookDragging = false;
+            CloseBookDragPopup();
+            AnimateBookDragFeedback(dragElement, isDragging: false);
+            ClearGroupDragOverState();
+            _bookDragCandidate = null;
+            _ignoreBookClickAfterDrag = true;
+            Dispatcher.BeginInvoke(
+                new Action(() => _ignoreBookClickAfterDrag = false),
+                DispatcherPriority.Background);
+        }
+
+        e.Handled = true;
+    }
+
+    private void BookCard_GiveFeedback(object sender, GiveFeedbackEventArgs e)
+    {
+        if (!_isBookDragging)
+        {
+            return;
+        }
+
+        UpdateBookDragPopupPosition();
+        e.UseDefaultCursors = true;
+    }
+
+    private void ShowBookDragPopup(FrameworkElement dragElement)
+    {
+        CloseBookDragPopup();
+
+        var snapshotSource = dragElement;
+        if (dragElement is ContentControl { Content: FrameworkElement contentElement }
+            && contentElement.ActualWidth > 0
+            && contentElement.ActualHeight > 0)
+        {
+            snapshotSource = contentElement;
+        }
+
+        var snapshot = CreateDragSnapshot(snapshotSource);
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        var preview = new Image
+        {
+            Width = snapshotSource.ActualWidth,
+            Height = snapshotSource.ActualHeight,
+            Source = snapshot,
+            Opacity = 0.6,
+            IsHitTestVisible = false,
+            Stretch = Stretch.Fill
+        };
+
+        var root = new Border
+        {
+            IsHitTestVisible = false,
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            RenderTransform = new ScaleTransform(1, 1),
+            Child = preview,
+            Effect = new DropShadowEffect
+            {
+                BlurRadius = 20,
+                ShadowDepth = 6,
+                Direction = 270,
+                Color = Color.FromRgb(106, 135, 151),
+                Opacity = 0.18
+            }
+        };
+
+        _bookDragPopup = new Popup
+        {
+            AllowsTransparency = true,
+            IsHitTestVisible = false,
+            Placement = PlacementMode.AbsolutePoint,
+            StaysOpen = true,
+            Child = root
+        };
+
+        _bookDragPopup.IsOpen = true;
+        AnimateBookDragPopupPickup(root, preview);
+    }
+
+    private static void AnimateBookDragPopupPickup(FrameworkElement root, UIElement preview)
+    {
+        if (root.RenderTransform is not ScaleTransform scale)
+        {
+            return;
+        }
+
+        var duration = TimeSpan.FromMilliseconds(115);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        scale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(0.88, duration)
+            {
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
+
+        scale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(0.88, duration)
+            {
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
+
+        preview.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation(0.82, duration)
+            {
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private RenderTargetBitmap? CreateDragSnapshot(FrameworkElement element)
+    {
+        if (element.ActualWidth <= 0 || element.ActualHeight <= 0)
+        {
+            return null;
+        }
+
+        var transform = PresentationSource.FromVisual(element)?.CompositionTarget?.TransformToDevice ?? Matrix.Identity;
+        var dpiX = 96 * transform.M11;
+        var dpiY = 96 * transform.M22;
+        var pixelWidth = Math.Max(1, (int)Math.Ceiling(element.ActualWidth * transform.M11));
+        var pixelHeight = Math.Max(1, (int)Math.Ceiling(element.ActualHeight * transform.M22));
+
+        var bitmap = new RenderTargetBitmap(pixelWidth, pixelHeight, dpiX, dpiY, PixelFormats.Pbgra32);
+        bitmap.Render(element);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private void UpdateBookDragPopupPosition()
+    {
+        if (_bookDragPopup is null || !_bookDragPopup.IsOpen || !GetCursorPos(out var cursorPoint))
+        {
+            return;
+        }
+
+        var position = new Point(cursorPoint.X, cursorPoint.Y);
+        if (PresentationSource.FromVisual(this)?.CompositionTarget is { } target)
+        {
+            position = target.TransformFromDevice.Transform(position);
+        }
+
+        _bookDragPopup.HorizontalOffset = position.X + 12;
+        _bookDragPopup.VerticalOffset = position.Y + 10;
+    }
+
+    private void CloseBookDragPopup()
+    {
+        if (_bookDragPopup is null)
+        {
+            return;
+        }
+
+        _bookDragPopup.IsOpen = false;
+        _bookDragPopup.Child = null;
+        _bookDragPopup = null;
+    }
+
+    private void GroupSection_PreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (_activeFilter == "groups" && e.Data.GetDataPresent(BookDragDataFormat))
+        {
+            SetGroupDragOverState((sender as FrameworkElement)?.DataContext as GroupSectionViewModel);
+            e.Effects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+    }
+
+    private void GroupSection_DragLeave(object sender, DragEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is GroupSectionViewModel section)
+        {
+            section.IsDragOver = false;
+        }
+    }
+
+    private void GroupSection_Drop(object sender, DragEventArgs e)
+    {
+        ClearGroupDragOverState();
+
+        if (_activeFilter != "groups"
+            || !e.Data.GetDataPresent(BookDragDataFormat)
+            || e.Data.GetData(BookDragDataFormat) is not BookItem book
+            || (sender as FrameworkElement)?.DataContext is not GroupSectionViewModel section)
+        {
+            return;
+        }
+
+        var targetGroupId = section.IsUngrouped ? null : section.GroupId;
+        if (book.GroupId == targetGroupId)
+        {
+            return;
+        }
+
+        book.GroupId = targetGroupId;
+        SaveState();
+        RefreshViews();
+        ShowToast(targetGroupId is null ? "已移动到未分组" : $"已移动到“{section.Name}”");
+        e.Handled = true;
+    }
+
+    private static void AnimateBookDragFeedback(FrameworkElement element, bool isDragging)
+    {
+        if (element.RenderTransform is not ScaleTransform scale)
+        {
+            scale = new ScaleTransform(1, 1);
+            element.RenderTransform = scale;
+            element.RenderTransformOrigin = new Point(0.5, 0.5);
+        }
+
+        var duration = TimeSpan.FromMilliseconds(isDragging ? 120 : 150);
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var targetOpacity = isDragging ? 0.36 : 1;
+        var targetScale = isDragging ? 0.975 : 1;
+
+        element.BeginAnimation(
+            UIElement.OpacityProperty,
+            new DoubleAnimation(targetOpacity, duration)
+            {
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
+
+        scale.BeginAnimation(
+            ScaleTransform.ScaleXProperty,
+            new DoubleAnimation(targetScale, duration)
+            {
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
+
+        scale.BeginAnimation(
+            ScaleTransform.ScaleYProperty,
+            new DoubleAnimation(targetScale, duration)
+            {
+                EasingFunction = easing
+            },
+            HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void SetGroupDragOverState(GroupSectionViewModel? targetSection)
+    {
+        foreach (var section in GroupSections)
+        {
+            section.IsDragOver = ReferenceEquals(section, targetSection);
+        }
+    }
+
+    private void ClearGroupDragOverState()
+    {
+        foreach (var section in GroupSections)
+        {
+            section.IsDragOver = false;
         }
     }
 
@@ -1009,9 +1667,30 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         book.RefreshFileState();
         if (book.IsMissing)
         {
-            RefreshViews();
-            MessageBox.Show(this, "找不到这本书的原文件。可以定位新文件后重新导入，或从书架移除。", "SeaS", MessageBoxButton.OK, MessageBoxImage.Information);
+            if (HandleMissingBook(book))
+            {
+                OpenBook(book, useLittleFish);
+            }
+
             return;
+        }
+
+        if (useLittleFish && !SupportsLittleFish(book))
+        {
+            var result = SeaSMessageBox.Show(
+                this,
+                $"{GetBookFormatName(book)} 格式暂不支持摸鱼模式。\n是否使用普通阅读模式打开？",
+                "SeaS",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Information,
+                showCloseButton: false,
+                distributeButtons: true);
+            if (result != MessageBoxResult.OK)
+            {
+                return;
+            }
+
+            useLittleFish = false;
         }
 
         if (useLittleFish)
@@ -1019,29 +1698,35 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             var executablePath = FindBundledLittleFishExecutable();
             if (executablePath is null)
             {
-                MessageBox.Show(this, "SeaS 内置的 LittleFish 文件缺失，请重新安装或修复 SeaS。", "SeaS", MessageBoxButton.OK, MessageBoxImage.Information);
+                SeaSMessageBox.Show(this, "SeaS 内置的 LittleFish 文件缺失，请重新安装或修复 SeaS。", "SeaS", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             try
             {
+                var pipeName = CreateHostedLittleFishPipeName();
                 var startInfo = new ProcessStartInfo(executablePath)
                 {
-                    UseShellExecute = true,
+                    UseShellExecute = false,
                     WorkingDirectory = Path.GetDirectoryName(executablePath) ?? AppContext.BaseDirectory
                 };
+                startInfo.ArgumentList.Add("--seas-hosted");
+                startInfo.ArgumentList.Add("--seas-host-pipe");
+                startInfo.ArgumentList.Add(pipeName);
                 startInfo.ArgumentList.Add(book.FilePath);
-                if (Process.Start(startInfo) is null)
+                var process = Process.Start(startInfo);
+                if (process is null)
                 {
                     throw new InvalidOperationException("LittleFish 进程未能启动。");
                 }
 
+                TrackHostedLittleFish(process, pipeName);
                 MarkOpened(book);
                 HideToTray();
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, $"使用 LittleFish 打开失败：{exception.Message}", "SeaS", MessageBoxButton.OK, MessageBoxImage.Warning);
+                SeaSMessageBox.Show(this, $"使用 LittleFish 打开失败：{exception.Message}", "SeaS", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
 
             return;
@@ -1063,7 +1748,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            MessageBox.Show(this, $"打开 TXT 阅读器失败：{exception.Message}", "SeaS", MessageBoxButton.OK, MessageBoxImage.Warning);
+            SeaSMessageBox.Show(this, $"打开阅读器失败：{exception.Message}", "SeaS", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1086,17 +1771,136 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         return File.Exists(executablePath) ? executablePath : null;
     }
 
+    private static string CreateHostedLittleFishPipeName()
+    {
+        return $"SeaS.LittleFish.Host.{Environment.ProcessId}.{Guid.NewGuid():N}";
+    }
+
+    private void TrackHostedLittleFish(Process process, string pipeName)
+    {
+        ClearHostedLittleFishTracking();
+        _hostedLittleFishProcess = process;
+        _hostedLittleFishPipeName = pipeName;
+
+        try
+        {
+            process.EnableRaisingEvents = true;
+            process.Exited += HostedLittleFish_Exited;
+        }
+        catch (InvalidOperationException)
+        {
+            ClearHostedLittleFishTracking();
+        }
+    }
+
+    private void HostedLittleFish_Exited(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!ReferenceEquals(_hostedLittleFishProcess, sender))
+            {
+                return;
+            }
+
+            ClearHostedLittleFishTracking();
+            if (!_exitRequested && !_isClosingHostedLittleFishForExit)
+            {
+                RestoreFromTray();
+            }
+        }));
+    }
+
+    private void ClearHostedLittleFishTracking()
+    {
+        if (_hostedLittleFishProcess is not null)
+        {
+            _hostedLittleFishProcess.Exited -= HostedLittleFish_Exited;
+            _hostedLittleFishProcess.Dispose();
+        }
+
+        _hostedLittleFishProcess = null;
+        _hostedLittleFishPipeName = null;
+    }
+
+    private bool HasActiveHostedLittleFish()
+    {
+        if (_hostedLittleFishProcess is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            if (!_hostedLittleFishProcess.HasExited)
+            {
+                return true;
+            }
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        ClearHostedLittleFishTracking();
+        return false;
+    }
+
+    private bool SendHostedLittleFishCommand(string command)
+    {
+        if (!HasActiveHostedLittleFish() || string.IsNullOrWhiteSpace(_hostedLittleFishPipeName))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var client = new NamedPipeClientStream(".", _hostedLittleFishPipeName, PipeDirection.Out);
+            client.Connect(350);
+            using var writer = new StreamWriter(client) { AutoFlush = true };
+            writer.WriteLine(command);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+
+        return false;
+    }
+
+    private bool TryShowHostedLittleFish()
+    {
+        return SendHostedLittleFishCommand("SHOW");
+    }
+
+    private void CloseHostedLittleFishForExit()
+    {
+        if (!HasActiveHostedLittleFish())
+        {
+            return;
+        }
+
+        _isClosingHostedLittleFishForExit = true;
+        if (SendHostedLittleFishCommand("CLOSE"))
+        {
+            return;
+        }
+
+        try
+        {
+            _hostedLittleFishProcess?.CloseMainWindow();
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
     private void InitializeTrayIcon()
     {
-        var menu = new Forms.ContextMenuStrip();
-        var restoreItem = new Forms.ToolStripMenuItem("打开 SeaS");
-        restoreItem.Click += (_, _) => Dispatcher.BeginInvoke(RestoreFromTray);
-        var exitItem = new Forms.ToolStripMenuItem("退出 SeaS");
-        exitItem.Click += (_, _) => Dispatcher.BeginInvoke(ExitFromTray);
-        menu.Items.Add(restoreItem);
-        menu.Items.Add(new Forms.ToolStripSeparator());
-        menu.Items.Add(exitItem);
-
         var executablePath = Environment.ProcessPath;
         var icon = !string.IsNullOrWhiteSpace(executablePath) && File.Exists(executablePath)
             ? System.Drawing.Icon.ExtractAssociatedIcon(executablePath)
@@ -1104,12 +1908,73 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         _trayIcon = new Forms.NotifyIcon
         {
-            ContextMenuStrip = menu,
             Icon = icon ?? System.Drawing.SystemIcons.Application,
             Text = "SeaS 阅读器",
             Visible = true
         };
-        _trayIcon.DoubleClick += (_, _) => Dispatcher.BeginInvoke(RestoreFromTray);
+        _trayIcon.DoubleClick += (_, _) => Dispatcher.BeginInvoke(new Action(HandleTrayDoubleClick));
+        _trayIcon.MouseUp += (_, e) =>
+        {
+            if (e.Button == Forms.MouseButtons.Right)
+            {
+                Dispatcher.BeginInvoke(new Action(ShowTrayMenu));
+            }
+        };
+    }
+
+    private void HandleTrayDoubleClick()
+    {
+        if (TryShowHostedLittleFish())
+        {
+            return;
+        }
+
+        RestoreFromTray();
+    }
+
+    private void ImportFilesFromTray()
+    {
+        RestoreFromTray();
+        ImportFiles_Click(this, new RoutedEventArgs());
+    }
+
+    private void ScanFolderFromTray()
+    {
+        RestoreFromTray();
+        ScanFolder_Click(this, new RoutedEventArgs());
+    }
+
+    private void ToggleModeFromTray()
+    {
+        SetMode(_state.Mode == "fish" ? "leisure" : "fish", save: true);
+        if (IsVisible && !_isHiddenToTray)
+        {
+            ShowToast(_state.Mode == "fish" ? "已切换到摸鱼模式" : "已切换到休闲模式");
+        }
+    }
+
+    private void ShowTrayMenu()
+    {
+        _trayMenuWindow?.Close();
+
+        var modeActionText = _state.Mode == "fish" ? "切换到休闲模式" : "切换到摸鱼模式";
+        var menu = new TrayMenuWindow(
+            modeActionText,
+            RestoreFromTray,
+            ImportFilesFromTray,
+            ScanFolderFromTray,
+            ToggleModeFromTray,
+            ExitFromTray);
+        menu.Closed += (_, _) =>
+        {
+            if (ReferenceEquals(_trayMenuWindow, menu))
+            {
+                _trayMenuWindow = null;
+            }
+        };
+
+        _trayMenuWindow = menu;
+        menu.ShowNearCursor();
     }
 
     private void HideToTray()
@@ -1163,6 +2028,21 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private void ToggleFavorite_Click(object sender, RoutedEventArgs e)
     {
         if (ResolveMenuBook(sender) is not { } book)
+        {
+            return;
+        }
+
+        book.IsFavorite = !book.IsFavorite;
+        book.FavoritedAt = book.IsFavorite ? DateTime.Now : null;
+        SaveState();
+        RefreshViews();
+        ShowToast(book.IsFavorite ? "已加入收藏" : "已取消收藏");
+    }
+
+    private void FavoriteStar_Click(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if ((sender as FrameworkElement)?.DataContext is not BookItem book)
         {
             return;
         }
@@ -1357,8 +2237,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         book.RefreshFileState();
         if (book.IsMissing)
         {
-            RefreshViews();
-            ShowToast("原文件已经不存在");
+            HandleMissingBook(book);
             return;
         }
 
@@ -1372,7 +2251,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
-        var result = MessageBox.Show(this, $"从书架移除《{book.Title}》？\n原文件不会被删除。", "SeaS", MessageBoxButton.OKCancel, MessageBoxImage.Question);
+        var result = SeaSMessageBox.Show(this, $"从书架移除《{book.Title}》？\n原文件不会被删除。", "SeaS", MessageBoxButton.OKCancel, MessageBoxImage.Question);
         if (result != MessageBoxResult.OK)
         {
             return;
@@ -1425,8 +2304,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _sidebarExpanded = true;
-        SetBrush("SidebarSelectedLabelBrush", "#C6F7BD");
-        System.Windows.Application.Current.Resources["SidebarSelectedMargin"] = new Thickness(0, 0, 20, 0);
+        UpdateSidebarSelectedVisuals();
+        System.Windows.Application.Current.Resources["SidebarSelectedMargin"] = new Thickness(0);
         AnimateSidebarControls(144, 144, 190, EasingMode.EaseOut);
 
         SidebarBorder.BeginAnimation(
@@ -1446,9 +2325,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
 
         _sidebarExpanded = false;
-        SetBrush("SidebarSelectedLabelBrush", "#00C6F7BD");
+        UpdateSidebarSelectedVisuals();
         System.Windows.Application.Current.Resources["SidebarSelectedMargin"] = new Thickness(0);
-        AnimateSidebarControls(36, 57, 160, EasingMode.EaseInOut);
+        AnimateSidebarControls(36, GetCollapsedModeButtonSize(), 160, EasingMode.EaseInOut);
         var sidebarAnimation = new DoubleAnimation(SidebarBorder.ActualWidth, 68, TimeSpan.FromMilliseconds(160))
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
@@ -1466,6 +2345,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             AnimateWidth(item, navigationWidth, durationMs, easingMode);
         }
 
+        AnimateWidth(HelpButton, navigationWidth, durationMs, easingMode);
         AnimateWidth(SettingsButton, navigationWidth, durationMs, easingMode);
         AnimateWidth(ModeToggleButton, modeWidth, durationMs, easingMode);
     }
@@ -1481,6 +2361,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             HandoffBehavior.SnapshotAndReplace);
     }
 
+    private double GetCollapsedModeButtonSize()
+    {
+        return WindowState == WindowState.Maximized ? 51 : 57;
+    }
+
     private void SetMode(string mode, bool save)
     {
         _state.Mode = mode;
@@ -1488,42 +2373,76 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
         SetBrush("MainBackgroundBrush", "#FFFFFF");
         SetSidebarBrush(isFish);
-        SetBrush("CardBrush", isFish ? "#F8F9F9" : "#F8FBFD");
-        SetBrush("BookCardBrush", "#E9F3FD");
-        SetBrush("PrimaryTextBrush", isFish ? "#424A4E" : "#3F4B52");
-        SetBrush("SecondaryTextBrush", isFish ? "#838C91" : "#81909A");
-        SetBrush("FaintTextBrush", isFish ? "#ADB4B8" : "#AAB6BD");
-        SetBrush("LineBrush", isFish ? "#E7E9EA" : "#E5EEF3");
-        SetBrush("AccentBrush", isFish ? "#C6CDD1" : "#B9DDF0");
-        SetBrush("AccentDarkBrush", isFish ? "#59676E" : "#4E7185");
-        SetBrush("AccentSoftBrush", isFish ? "#F2F4F5" : "#F2F8FC");
-        SetBrush("SidebarHoverBrush", isFish ? "#3EFFFFFF" : "#48FFFFFF");
-        SetBrush("SidebarSelectedBrush", "#FFFFFF");
-        SetBrush("SidebarSelectedLabelBrush", _sidebarExpanded ? "#C6F7BD" : "#00C6F7BD");
+        SetBrush("CardBrush", isFish ? "#FFFFFF" : "#F8FBFD");
+        SetBrush("BookCardBrush", isFish ? "#DDEFF7" : "#E9F3FD");
+        SetBrush("BookCardBrushCream", isFish ? "#FFF1D8" : "#E9F3FD");
+        SetBrush("BookCardBrushRose", isFish ? "#F7E2DF" : "#E9F3FD");
+        SetBrush("BookCardBrushMint", isFish ? "#E6F3EA" : "#E9F3FD");
+        SetBrush("BookCardBorderBrush", "#00FFFFFF");
+        SetBrush("BookCardChipBrush", isFish ? "#F2FAFD" : "#F2F8FC");
+        SetBrush("LibraryToolsBackgroundBrush", "#00FFFFFF");
+        SetBrush("PrimaryTextBrush", isFish ? "#2F4149" : "#3F4B52");
+        SetBrush("SecondaryTextBrush", isFish ? "#6D8793" : "#81909A");
+        SetBrush("FaintTextBrush", isFish ? "#A6BBC5" : "#AAB6BD");
+        SetBrush("LineBrush", isFish ? "#E5F0F5" : "#E5EEF3");
+        SetBrush("AccentBrush", isFish ? "#7DB9D6" : "#B9DDF0");
+        SetBrush("AccentDarkBrush", isFish ? "#3C7894" : "#4E7185");
+        SetBrush("AccentSoftBrush", isFish ? "#F2FAFD" : "#F2F8FC");
+        SetBrush("TopTabIdleBrush", isFish ? "#E2F0F3" : "#00FFFFFF");
+        SetBrush("TopTabSelectedBrush", isFish ? "#6AAACA" : "#F2F8FC");
+        SetBrush("TopTabHoverBrush", isFish ? "#D7EBF1" : "#F2F8FC");
+        SetBrush("TopTabTextBrush", isFish ? "#314047" : "#81909A");
+        SetBrush("TopTabSelectedTextBrush", isFish ? "#FFFFFF" : "#4E7185");
+        SetBrush("SidebarHoverBrush", isFish ? "#6AFFFFFF" : "#48FFFFFF");
+        UpdateSidebarSelectedVisuals();
         System.Windows.Application.Current.Resources["SidebarSelectedMargin"] =
-            _sidebarExpanded ? new Thickness(0, 0, 20, 0) : new Thickness(0);
-        SetBrush("SelectedTextBrush", isFish ? "#56656C" : "#356A88");
-        SetBrush("SidebarTextBrush", isFish ? "#68777E" : "#55798E");
-        SetBrush("SidebarActiveTextBrush", isFish ? "#56656C" : "#356A88");
-        SetBrush("SidebarLogoBrush", isFish ? "#26FFFFFF" : "#2AFFFFFF");
-        SetBrush("SidebarEdgeBrush", isFish ? "#3EFFFFFF" : "#48FFFFFF");
-        SetBrush("ModeBrush", isFish ? "#D8FFFFFF" : "#DFFFFFFF");
-        SetBrush("ControlSurfaceBrush", isFish ? "#F3F5F5" : "#F2F7FA");
-        SetBrush("ControlHoverBrush", isFish ? "#E8ECEE" : "#E5F1F7");
-        SetBrush("LimeBrush", isFish ? "#D0D9BF" : "#C4EAB5");
-        SetBrush("LimeSoftBrush", isFish ? "#F5F7F0" : "#F3FAF0");
-        SetBrush("LimeDarkBrush", isFish ? "#6E775F" : "#64805E");
+            new Thickness(0);
+        SetBrush("SelectedTextBrush", isFish ? "#2F7EA0" : "#356A88");
+        SetBrush("SidebarTextBrush", isFish ? "#527E92" : "#55798E");
+        SetBrush("SidebarActiveTextBrush", isFish ? "#2F7EA0" : "#356A88");
+        SetBrush("SidebarIconBrush", isFish ? "#527E92" : "#B3D1EB");
+        SetBrush("SidebarActiveIconBrush", isFish ? "#FFFFFF" : "#E8B8B8");
+        SetBrush("SidebarLogoBrush", isFish ? "#36FFFFFF" : "#2AFFFFFF");
+        SetBrush("SidebarEdgeBrush", isFish ? "#7AFFFFFF" : "#48FFFFFF");
+        SetBrush("ModeBrush", isFish ? "#F6E3DF" : "#DFFFFFFF");
+        SetBrush("ModeIconBrush", isFish ? "#DD9184" : "#356A88");
+        SetBrush("ControlSurfaceBrush", isFish ? "#F2FAFD" : "#F2F7FA");
+        SetBrush("ControlHoverBrush", isFish ? "#E9F6FB" : "#E5F1F7");
+        SetBrush("LimeBrush", isFish ? "#E6F3EA" : "#C4EAB5");
+        SetBrush("LimeSoftBrush", isFish ? "#F7FFF9" : "#F3FAF0");
+        SetBrush("LimeDarkBrush", isFish ? "#5E8A70" : "#64805E");
+        SetBrush("FavoriteStarBrush", isFish ? "#D8A84E" : "#E5A93E");
+        SetBrush("WarmAccentBrush", isFish ? "#D98379" : "#AA6A2A");
+        System.Windows.Application.Current.Resources["BookCardCornerRadius"] =
+            isFish ? new CornerRadius(16) : new CornerRadius(6);
+        RefreshBookCardVisuals();
 
         SeaSLogo.Visibility = isFish ? Visibility.Collapsed : Visibility.Visible;
         LittleFishLogo.Visibility = isFish ? Visibility.Visible : Visibility.Collapsed;
-        ModeToggleButton.ToolTip = isFish ? "切换到休闲模式" : "切换到摸鱼模式";
-        ModeToggleButton.Tag = isFish ? "休闲模式" : "摸鱼模式";
+        ModeToggleButton.ToolTip = isFish ? "当前为摸鱼模式，点击切换到休闲模式" : "当前为休闲模式，点击切换到摸鱼模式";
+        ModeToggleButton.Tag = isFish ? "摸鱼模式" : "休闲模式";
 
         if (save)
         {
             SaveState();
             ShowToast(isFish ? "已切换到摸鱼模式" : "已切换到休闲模式");
         }
+    }
+
+    private void RefreshBookCardVisuals()
+    {
+        ShelfItemsControl?.Items.Refresh();
+        GroupSectionsItemsControl?.Items.Refresh();
+    }
+
+    private void UpdateSidebarSelectedVisuals()
+    {
+        var isFish = _state.Mode == "fish";
+        SetBrush("SidebarSelectedItemBrush", isFish ? "#00FFFFFF" : "#FFFFFF");
+        SetBrush("SidebarSelectedBrush", isFish
+            ? "#6CA8CA"
+            : "#00FFFFFF");
+        SetBrush("SidebarSelectedLabelBrush", "#00FFFFFF");
     }
 
     private static void SetBrush(string resourceKey, string color)
@@ -1533,28 +2452,50 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private static void SetSidebarBrush(bool isFish)
     {
-        var gradient = new LinearGradientBrush
+        if (isFish)
         {
-            StartPoint = new Point(0, 0.5),
-            EndPoint = new Point(1, 0.5)
-        };
-        gradient.GradientStops.Add(new GradientStop(
-            (Color)ColorConverter.ConvertFromString(isFish ? "#CBD3D7" : "#AFD0EC"), 0));
-        gradient.GradientStops.Add(new GradientStop(
-            (Color)ColorConverter.ConvertFromString(isFish ? "#D6DCE0" : "#B8D6EE"), 0.55));
-        gradient.GradientStops.Add(new GradientStop(
-            (Color)ColorConverter.ConvertFromString(isFish ? "#E1E6E8" : "#C3DCF1"), 1));
-        System.Windows.Application.Current.Resources["SidebarBrush"] = gradient;
-    }
+            System.Windows.Application.Current.Resources["SidebarBrush"] =
+                new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFFFF"));
+            return;
+        }
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
-    {
-        MessageBox.Show(this, "设置页会在主页完成后接入。", "SeaS", MessageBoxButton.OK, MessageBoxImage.Information);
+        System.Windows.Application.Current.Resources["SidebarBrush"] =
+            new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E9F3FD"));
     }
 
     private void MinimizeWindow_Click(object sender, RoutedEventArgs e)
     {
         WindowState = WindowState.Minimized;
+    }
+
+    private void OpenSettings_Click(object sender, RoutedEventArgs e)
+    {
+        _state.ShortcutPreferences ??= new ReaderShortcutPreferences();
+        _state.ShortcutPreferences.Normalize();
+
+        var dialog = new SettingsWindow(_state.ShortcutPreferences)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        _state.ShortcutPreferences = dialog.ShortcutPreferences.Clone();
+        _state.ShortcutPreferences.Normalize();
+        SaveState();
+        ShowToast("设置已保存");
+    }
+
+    private void OpenHelp_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new HelpWindow
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
     }
 
     private void MaximizeWindow_Click(object sender, RoutedEventArgs e)
@@ -1581,6 +2522,11 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             MaximizeWindowIcon.Text = WindowState == WindowState.Maximized ? "\uE923" : "\uE922";
         }
 
+        if (MaximizeWindowButton is not null)
+        {
+            MaximizeWindowButton.ToolTip = WindowState == WindowState.Maximized ? "恢复" : "最大化";
+        }
+
         if (WindowBorder is not null)
         {
             WindowBorder.CornerRadius = WindowState == WindowState.Maximized ? new CornerRadius(0) : new CornerRadius(10);
@@ -1590,6 +2536,34 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (SidebarBorder is not null)
         {
             SidebarBorder.CornerRadius = WindowState == WindowState.Maximized ? new CornerRadius(0) : new CornerRadius(10, 0, 0, 10);
+        }
+
+        if (SidebarBackground is not null)
+        {
+            SidebarBackground.CornerRadius = WindowState == WindowState.Maximized ? new CornerRadius(0) : new CornerRadius(10, 0, 0, 10);
+        }
+
+        if (SidebarContent is not null)
+        {
+            SidebarContent.Margin = WindowState == WindowState.Maximized ? new Thickness(6, 0, 0, 0) : new Thickness(0);
+        }
+
+        if (SidebarLogoHost is not null)
+        {
+            SidebarLogoHost.Margin = WindowState == WindowState.Maximized
+                ? new Thickness(9, 14, 0, 0)
+                : new Thickness(15, 14, 0, 0);
+        }
+
+        if (ModeToggleButton is not null)
+        {
+            var modeButtonSize = GetCollapsedModeButtonSize();
+            ModeToggleButton.Height = modeButtonSize;
+            if (!_sidebarExpanded)
+            {
+                ModeToggleButton.BeginAnimation(FrameworkElement.WidthProperty, null);
+                ModeToggleButton.Width = modeButtonSize;
+            }
         }
     }
 
@@ -1754,7 +2728,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         }
         catch (Exception exception)
         {
-            MessageBox.Show(this, $"保存书架数据失败：{exception.Message}", "SeaS", MessageBoxButton.OK, MessageBoxImage.Warning);
+            SeaSMessageBox.Show(this, $"保存书架数据失败：{exception.Message}", "SeaS", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -1832,10 +2806,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     protected override void OnClosed(EventArgs e)
     {
         _windowPlacementTimer.Stop();
+        _trayMenuWindow?.Close();
+        _trayMenuWindow = null;
+        ClearHostedLittleFishTracking();
         if (_trayIcon is not null)
         {
             _trayIcon.Visible = false;
-            _trayIcon.ContextMenuStrip?.Dispose();
             _trayIcon.Dispose();
             _trayIcon = null;
         }
@@ -1853,6 +2829,7 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             return;
         }
 
+        CloseHostedLittleFishForExit();
         base.OnClosing(e);
     }
 }

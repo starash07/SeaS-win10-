@@ -20,6 +20,7 @@ public partial class GroupManagementWindow : Window
     public GroupManagementWindow(IEnumerable<BookGroup> groups)
     {
         InitializeComponent();
+        DialogMotion.EnablePop(DialogRoot);
         DataContext = this;
         foreach (var group in groups.OrderBy(group => group.SortOrder).ThenBy(group => group.CreatedAt))
         {
@@ -78,7 +79,7 @@ public partial class GroupManagementWindow : Window
             return;
         }
 
-        var result = MessageBox.Show(
+        var result = SeaSMessageBox.Show(
             this,
             $"删除“{group.Name}”？\n该分组里的书籍会移到“未分组”，原文件不会被删除。",
             "SeaS",

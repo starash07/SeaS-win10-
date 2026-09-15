@@ -17,6 +17,22 @@ public partial class App : System.Windows.Application
     {
         base.OnStartup(e);
 
+        if (e.Args.Any(argument => string.Equals(argument, "--package-smoke-test", StringComparison.OrdinalIgnoreCase)))
+        {
+            try
+            {
+                var smokeWindow = new MainWindow();
+                smokeWindow.Hide();
+                Shutdown(0);
+            }
+            catch
+            {
+                Shutdown(1);
+            }
+
+            return;
+        }
+
 #if DEBUG
         DispatcherUnhandledException += (_, args) =>
             DebugLog.WriteException("DispatcherUnhandledException", args.Exception);

@@ -9,7 +9,7 @@
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource MainBackgroundBrush}"
         FontFamily="Segoe UI, Microsoft YaHei UI">
-    <Grid Margin="22">
+    <Grid x:Name="DialogRoot" Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="12" />
@@ -27,7 +27,7 @@
                        Margin="0,7,0,0"
                        Foreground="{DynamicResource SecondaryTextBrush}"
                        FontSize="12.5"
-                       Text="下面这些书籍的原 TXT 文件已经找不到。确认后只会从 SeaS 书架移除记录，不会删除本地文件。" />
+                       Text="下面这些书籍的原文件已经找不到。确认后只会从 SeaS 书架移除记录，不会删除本地文件。" />
         </StackPanel>
 
         <Border Grid.Row="2"

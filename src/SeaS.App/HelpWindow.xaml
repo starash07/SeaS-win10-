@@ -1,0 +1,357 @@
+<Window x:Class="SeaS.App.HelpWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="帮助"
+        Width="640"
+        Height="400"
+        MinWidth="520"
+        MinHeight="320"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Icon="Assets/seas.png"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        UseLayoutRounding="True">
+    <Window.Resources>
+        <Style x:Key="HelpLineTextStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="LineHeight" Value="19" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="8" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Width="{TemplateBinding Width}"
+                              Background="Transparent">
+                            <Track x:Name="PART_Track"
+                                   IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                                  Focusable="False"
+                                                  Opacity="0" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb MinHeight="42">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBody"
+                                                        Margin="2,0"
+                                                        Background="#C9DDE8"
+                                                        CornerRadius="3" />
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="ThumbBody" Property="Background" Value="#AFCADB" />
+                                                    </Trigger>
+                                                    <Trigger Property="IsDragging" Value="True">
+                                                        <Setter TargetName="ThumbBody" Property="Background" Value="#86B7D1" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                                  Focusable="False"
+                                                  Opacity="0" />
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="HelpPageTabStyle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="178" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,14,0" />
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource ControlSurfaceBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Root"
+                                Width="{TemplateBinding Width}"
+                                Height="{TemplateBinding Height}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+                                <Setter Property="FontWeight" Value="Medium" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Opacity" Value="0.78" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="0"
+                      CornerRadius="10"
+                      GlassFrameThickness="0" />
+    </WindowChrome.WindowChrome>
+
+    <Border x:Name="DialogRoot"
+            Background="{DynamicResource MainBackgroundBrush}"
+            BorderBrush="{DynamicResource LineBrush}"
+            BorderThickness="1"
+            CornerRadius="10"
+            ClipToBounds="True">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="46" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0"
+                  MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <TextBlock Margin="26,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontSize="17"
+                           FontWeight="SemiBold"
+                           Text="帮助" />
+                <Button Width="34"
+                        Height="34"
+                        Margin="0,7,12,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTip="关闭"
+                        Click="CloseButton_Click">
+                    <TextBlock FontFamily="Segoe MDL2 Assets"
+                               FontSize="10"
+                               Text="&#xE711;" />
+                </Button>
+            </Grid>
+
+            <Grid Grid.Row="1"
+                  Margin="26,2,26,22">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="32" />
+                    <RowDefinition Height="10" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0"
+                            Orientation="Horizontal">
+                    <ToggleButton x:Name="SeaSGuideTab"
+                                  Content="SeaS 使用指南"
+                                  IsChecked="True"
+                                  Style="{StaticResource HelpPageTabStyle}"
+                                  Click="HelpPageTab_Click" />
+                    <ToggleButton x:Name="FishGuideTab"
+                                  Content="摸鱼模式使用指南"
+                                  Style="{StaticResource HelpPageTabStyle}"
+                                  Click="HelpPageTab_Click" />
+                </StackPanel>
+
+                <Border Grid.Row="2"
+                        Padding="20,14,16,12"
+                        Background="{DynamicResource CardBrush}"
+                        BorderBrush="{DynamicResource LineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <Grid>
+                        <ScrollViewer x:Name="SeaSGuidePanel"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Focusable="False">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="F10" />
+                                    <Run Text=" 开启或退出专注模式。专注模式下，鼠标移到窗口左侧区域即可呼出导航栏。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="F11" />
+                                    <Run Text=" 在专注模式下最大化或恢复窗口。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + F" />
+                                    <Run Text=" 打开书内搜索。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + B" />
+                                    <Run Text=" 打开/关闭书签列表。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + D" />
+                                    <Run Text=" 在当前位置添加书签。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Backspace" />
+                                    <Run Text=" 返回书架。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + ← / Ctrl + →" />
+                                    <Run Text=" 切换上一章/下一章。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="← / →" />
+                                    <Run Text=" 在翻页模式下切换上一页/下一页，在滚动模式下切换上一章/下一章。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="PageUp / PageDown" />
+                                    <Run Text=" 切换上一页/下一页。" />
+                                </TextBlock>
+
+                                <TextBlock Margin="0"
+                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                           FontSize="13"
+                                           LineHeight="19"
+                                           TextWrapping="Wrap">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Home / End" />
+                                    <Run Text=" 跳到当前章节开头/结尾。" />
+                                </TextBlock>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <ScrollViewer x:Name="FishGuidePanel"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      Focusable="False"
+                                      Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="F6" />
+                                    <Run Text=" 开启或关闭自动翻页。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="F7" />
+                                    <Run Text=" 隐藏功能栏；隐藏后，按住正文区域即可拖动窗口，按住窗口边缘即可调整窗口大小。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + T" />
+                                    <Run Text=" 开启/关闭窗口置顶模式。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· " />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="F9" />
+                                    <Run Text=" 开启鼠标移出隐藏/进入显示的功能。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 在" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="设置＞翻页" />
+                                    <Run Text="中可开启整页翻页，并调整自动翻页间隔时间。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 在" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="设置＞外观" />
+                                    <Run Text="中，可自定义文字颜色和背景颜色。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 按下" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + 加号 / Ctrl + 减号" />
+                                    <Run Text="可调整文字大小。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 按住" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl" />
+                                    <Run Text="并滚动鼠标滚轮，可调整背景不透明度。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 按住" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Alt" />
+                                    <Run Text="并滚动鼠标滚轮，可调整整个窗口的不透明度。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 在菜单中可进行进度跳转。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 按下" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + Shift + Z" />
+                                    <Run Text="可触发老板键/快捷隐藏，再按一次恢复显示。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 找不到窗口时可按下" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + Shift + F12" />
+                                    <Run Text="强制显示窗口。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 按下" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="Ctrl + W" />
+                                    <Run Text="关闭软件。" />
+                                </TextBlock>
+
+                                <TextBlock Style="{StaticResource HelpLineTextStyle}">
+                                    <Run Text="· 在" />
+                                    <Run FontWeight="SemiBold" Foreground="{DynamicResource AccentDarkBrush}" Text="设置＞窗口" />
+                                    <Run Text="中可开启最小化到托盘。" />
+                                </TextBlock>
+
+                                <TextBlock Margin="0"
+                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                           FontSize="13"
+                                           LineHeight="19"
+                                           TextWrapping="Wrap">
+                                    <Run Text="· 所有快捷键可在设置中修改。" />
+                                </TextBlock>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

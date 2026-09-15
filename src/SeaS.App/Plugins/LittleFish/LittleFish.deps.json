@@ -6,9 +6,10 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v8.0": {
-      "LittleFish/1.0.0": {
+      "LittleFish/1.5.2": {
         "dependencies": {
-          "System.Text.Encoding.CodePages": "10.0.7"
+          "System.Text.Encoding.CodePages": "10.0.7",
+          "UTF.Unknown": "2.7.0"
         },
         "runtime": {
           "LittleFish.dll": {}
@@ -29,11 +30,19 @@
             "fileVersion": "10.0.726.21808"
           }
         }
+      },
+      "UTF.Unknown/2.7.0": {
+        "runtime": {
+          "lib/net8.0/UtfUnknown.dll": {
+            "assemblyVersion": "2.0.0.0",
+            "fileVersion": "2.1.105.0"
+          }
+        }
       }
     }
   },
   "libraries": {
-    "LittleFish/1.0.0": {
+    "LittleFish/1.5.2": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
@@ -44,6 +53,13 @@
       "sha512": "sha512-jVwqeYm6ihKbC8+f9dC+VGlWb6areYWTi+3aHuawZXazkiVs3DxQTNeiMYbcZ/H+JzVkPXfkLUUzUFPQneobFg==",
       "path": "system.text.encoding.codepages/10.0.7",
       "hashPath": "system.text.encoding.codepages.10.0.7.nupkg.sha512"
+    },
+    "UTF.Unknown/2.7.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-QpiN8FVvfEMB6QF3T8IhXCbA0atOu1opLHRlbVxPOW9Cv3VksGVPQVXAjCdWFc00sA7FL6z7pOFCYWtO89PbgQ==",
+      "path": "utf.unknown/2.7.0",
+      "hashPath": "utf.unknown.2.7.0.nupkg.sha512"
     }
   }
 }

@@ -13,6 +13,7 @@ public sealed class LibraryState
     public List<BookGroup> Groups { get; set; } = [];
     public List<ReaderBookmark> Bookmarks { get; set; } = [];
     public ReaderPreferences ReaderPreferences { get; set; } = new();
+    public ReaderShortcutPreferences ShortcutPreferences { get; set; } = new();
     public WindowPreferences WindowPreferences { get; set; } = new();
 }
 
@@ -23,6 +24,7 @@ public static class LibraryStore
         "SeaS");
 
     private static readonly string StatePath = Path.Combine(DataDirectory, "library.json");
+    public static string CoverDirectory => Path.Combine(DataDirectory, "Covers");
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

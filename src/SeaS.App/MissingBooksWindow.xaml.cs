@@ -14,6 +14,7 @@ public partial class MissingBooksWindow : Window
     public MissingBooksWindow(IEnumerable<BookItem> books)
     {
         InitializeComponent();
+        DialogMotion.EnablePop(DialogRoot);
         Items = new ObservableCollection<MissingBookSelection>(
             books.Select(book => new MissingBookSelection(book)));
         DataContext = this;
@@ -49,7 +50,7 @@ public partial class MissingBooksWindow : Window
 
         if (SelectedBooks.Count == 0)
         {
-            MessageBox.Show(this, "请先选择需要移除的失效书籍。", "SeaS", MessageBoxButton.OK, MessageBoxImage.Information);
+            SeaSMessageBox.Show(this, "请先选择需要移除的失效书籍。", "SeaS", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 

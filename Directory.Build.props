@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <SeaSVersion>1.1.0</SeaSVersion>
+    <Version>$(SeaSVersion)</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <InformationalVersion>$(SeaSVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

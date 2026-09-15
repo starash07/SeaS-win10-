@@ -1,0 +1,97 @@
+<Window x:Class="SeaS.App.MissingBookActionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="找不到原文件"
+        Width="500"
+        Height="230"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Icon="Assets/seas.png"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="0"
+                      CornerRadius="10"
+                      GlassFrameThickness="0" />
+    </WindowChrome.WindowChrome>
+
+    <Border x:Name="DialogRoot"
+            Background="{DynamicResource MainBackgroundBrush}"
+            BorderBrush="{DynamicResource LineBrush}"
+            BorderThickness="1"
+            CornerRadius="10"
+            ClipToBounds="True">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="46" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="66" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0"
+                  Background="Transparent"
+                  MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <TextBlock Margin="26,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Text="找不到原文件" />
+                <Button Width="34"
+                        Height="34"
+                        Margin="0,6,12,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTip="关闭"
+                        Click="Cancel_Click">
+                    <TextBlock FontFamily="Segoe MDL2 Assets"
+                               FontSize="10"
+                               Text="&#xE711;" />
+                </Button>
+            </Grid>
+
+            <StackPanel Grid.Row="1"
+                        Margin="28,10,28,0">
+                <TextBlock Text="{Binding BookTitle}"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontSize="14"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Margin="0,10,0,0"
+                           Foreground="{DynamicResource SecondaryTextBrush}"
+                           FontSize="12.5"
+                           LineHeight="22"
+                           Text="这本书的原文件可能被移动或删除了。你可以手动定位新的文件，也可以清理书架中的失效记录。"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="2"
+                        Margin="0,0,24,22"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Orientation="Horizontal">
+                <Button Width="86"
+                        Margin="0,0,10,0"
+                        Style="{StaticResource DialogSecondaryButtonStyle}"
+                        Content="取消"
+                        IsCancel="True"
+                        Click="Cancel_Click" />
+                <Button Width="118"
+                        Margin="0,0,10,0"
+                        Style="{StaticResource DialogSecondaryButtonStyle}"
+                        Content="清理失效书籍"
+                        Click="CleanMissing_Click" />
+                <Button Width="118"
+                        Style="{StaticResource DialogPrimaryButtonStyle}"
+                        Content="重新定位文件"
+                        IsDefault="True"
+                        Click="Relocate_Click" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

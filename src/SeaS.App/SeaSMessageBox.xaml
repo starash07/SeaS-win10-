@@ -1,0 +1,145 @@
+<Window x:Class="SeaS.App.SeaSMessageBox"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SeaS"
+        Width="436"
+        MinWidth="360"
+        MaxWidth="500"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Icon="Assets/seas.png"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        UseLayoutRounding="True">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="0"
+                      CornerRadius="16"
+                      GlassFrameThickness="0" />
+    </WindowChrome.WindowChrome>
+
+    <Grid x:Name="DialogRoot"
+          Margin="14"
+          Background="Transparent">
+        <Border Background="{DynamicResource MainBackgroundBrush}"
+                BorderBrush="{DynamicResource LineBrush}"
+                BorderThickness="1"
+                CornerRadius="16">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="20"
+                                  ShadowDepth="3"
+                                  Direction="270"
+                                  Color="#6A8797"
+                                  Opacity="0.12" />
+            </Border.Effect>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="50" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="66" />
+                </Grid.RowDefinitions>
+
+                <Grid Grid.Row="0"
+                      Background="Transparent"
+                      MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                    <TextBlock x:Name="CaptionText"
+                               Margin="24,0,58,0"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource PrimaryTextBrush}"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="SeaS"
+                               TextTrimming="CharacterEllipsis" />
+                    <Button x:Name="CloseButton"
+                            Width="34"
+                            Height="34"
+                            Margin="0,8,12,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Style="{StaticResource IconButtonStyle}"
+                            ToolTip="关闭"
+                            Click="CloseButton_Click">
+                        <TextBlock FontFamily="Segoe MDL2 Assets"
+                                   FontSize="10"
+                                   Text="&#xE711;" />
+                    </Button>
+                </Grid>
+
+                <Border Grid.Row="1"
+                        Margin="22,4,22,0"
+                        Padding="16,14"
+                        Background="{DynamicResource CardBrush}"
+                        BorderBrush="{DynamicResource LineBrush}"
+                        BorderThickness="1"
+                        CornerRadius="14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="50" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border x:Name="IconBubble"
+                                Width="36"
+                                Height="36"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource AccentSoftBrush}"
+                                CornerRadius="18">
+                            <Grid HorizontalAlignment="Center"
+                                  VerticalAlignment="Center">
+                                <Grid x:Name="WarningGlyph"
+                                      Width="18"
+                                      Height="21"
+                                      Visibility="Collapsed">
+                                    <Rectangle x:Name="WarningStem"
+                                               Width="3"
+                                               Height="12"
+                                               Margin="0,1.5,0,0"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Top"
+                                               RadiusX="1.5"
+                                               RadiusY="1.5"
+                                               Fill="{DynamicResource AccentDarkBrush}" />
+                                    <Ellipse x:Name="WarningDot"
+                                             Width="3.6"
+                                             Height="3.6"
+                                             Margin="0,0,0,1.2"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Bottom"
+                                             Fill="{DynamicResource AccentDarkBrush}" />
+                                </Grid>
+                                <TextBlock x:Name="IconText"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Foreground="{DynamicResource AccentDarkBrush}"
+                                           FontSize="16"
+                                           FontWeight="SemiBold"
+                                           Text="i" />
+                            </Grid>
+                        </Border>
+
+                        <TextBlock x:Name="MessageText"
+                                   Grid.Column="1"
+                                   Margin="0,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource PrimaryTextBrush}"
+                                   FontSize="13"
+                                   LineHeight="22"
+                                   TextWrapping="Wrap" />
+                    </Grid>
+                </Border>
+
+                <Grid x:Name="ButtonPanel"
+                      Grid.Row="2"
+                      Margin="22,0,22,18"
+                      HorizontalAlignment="Right"
+                      VerticalAlignment="Bottom" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

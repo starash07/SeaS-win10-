@@ -50,11 +50,19 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
                         <Grid Height="36" ClipToBounds="True">
-                             <Border x:Name="IconRoot" Background="{TemplateBinding Background}" CornerRadius="18">
+                            <Border x:Name="IconRoot" Background="Transparent" CornerRadius="18">
                                  <Grid>
-                                    <Grid Width="36" HorizontalAlignment="Left">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    </Grid>
+                                    <Border x:Name="IconBubble"
+                                            Width="36"
+                                            Height="36"
+                                            HorizontalAlignment="Left"
+                                            Background="{TemplateBinding Background}"
+                                            CornerRadius="18">
+                                        <ContentPresenter x:Name="IconContent"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"
+                                                          TextElement.Foreground="{DynamicResource SidebarIconBrush}" />
+                                    </Border>
                                      <Border x:Name="SelectedLabelBackground"
                                             Width="72"
                                              Margin="43,0,0,0"
@@ -77,15 +85,16 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="IconRoot" Property="Background" Value="{DynamicResource SidebarHoverBrush}" />
+                                <Setter TargetName="IconBubble" Property="Background" Value="{DynamicResource SidebarHoverBrush}" />
                                 <Setter Property="Foreground" Value="{DynamicResource SidebarActiveTextBrush}" />
                             </Trigger>
                              <Trigger Property="IsChecked" Value="True">
-                                 <Setter TargetName="IconRoot" Property="Background" Value="{DynamicResource SidebarSelectedBrush}" />
+                                <Setter TargetName="IconRoot" Property="Background" Value="{DynamicResource SidebarSelectedItemBrush}" />
+                                 <Setter TargetName="IconBubble" Property="Background" Value="{DynamicResource SidebarSelectedBrush}" />
                                 <Setter TargetName="IconRoot" Property="Margin" Value="{DynamicResource SidebarSelectedMargin}" />
                                 <Setter TargetName="SelectedLabelBackground" Property="Background" Value="{DynamicResource SidebarSelectedLabelBrush}" />
+                                <Setter TargetName="IconContent" Property="TextElement.Foreground" Value="{DynamicResource SidebarActiveIconBrush}" />
                                  <Setter Property="Foreground" Value="{DynamicResource SelectedTextBrush}" />
-                                 <Setter Property="FontWeight" Value="SemiBold" />
                              </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter Property="Opacity" Value="0.68" />
@@ -112,11 +121,19 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid Height="36" ClipToBounds="True">
-                            <Border x:Name="IconRoot" Background="{TemplateBinding Background}" CornerRadius="18">
+                            <Border x:Name="IconRoot" Background="Transparent" CornerRadius="18">
                                 <Grid>
-                                    <Grid Width="36" HorizontalAlignment="Left">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    </Grid>
+                                    <Border x:Name="IconBubble"
+                                            Width="36"
+                                            Height="36"
+                                            HorizontalAlignment="Left"
+                                            Background="{TemplateBinding Background}"
+                                            CornerRadius="18">
+                                        <ContentPresenter x:Name="IconContent"
+                                                          HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"
+                                                          TextElement.Foreground="{DynamicResource SidebarIconBrush}" />
+                                    </Border>
                                     <TextBlock Margin="50,0,12,0"
                                                VerticalAlignment="Center"
                                                Foreground="{TemplateBinding Foreground}"
@@ -131,7 +148,7 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="IconRoot" Property="Background" Value="{DynamicResource SidebarHoverBrush}" />
+                                <Setter TargetName="IconBubble" Property="Background" Value="{DynamicResource SidebarHoverBrush}" />
                                 <Setter Property="Foreground" Value="{DynamicResource SidebarActiveTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
@@ -143,6 +160,34 @@
             </Setter>
         </Style>
 
+        <Style x:Key="SidebarToggleIconStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarIconBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource SidebarActiveIconBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SidebarActionIconStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SidebarIconBrush}" />
+        </Style>
+
+        <Style x:Key="SidebarToggleVectorIconStyle" TargetType="Path">
+            <Setter Property="Fill" Value="{DynamicResource SidebarIconBrush}" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=ToggleButton}}" Value="True">
+                    <Setter Property="Fill" Value="{DynamicResource SidebarActiveIconBrush}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SidebarActionVectorIconStyle" TargetType="Path">
+            <Setter Property="Fill" Value="{DynamicResource SidebarIconBrush}" />
+            <Setter Property="Stretch" Value="Uniform" />
+        </Style>
+
         <Style x:Key="CardButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="136" />
             <Setter Property="Height" Value="186" />
@@ -152,6 +197,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -161,16 +207,17 @@
                                 Height="168"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
-                                Padding="12,18,12,10"
-                                Background="{DynamicResource BookCardBrush}"
-                                BorderBrush="Transparent"
+                                Padding="0"
+                                Background="{Binding Converter={StaticResource CoverImageBrushConverter}}"
+                                BorderBrush="{DynamicResource BookCardBorderBrush}"
                                 BorderThickness="1"
-                                CornerRadius="8">
-                            <ContentPresenter />
+                                CornerRadius="{DynamicResource BookCardCornerRadius}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                         </Border>
                         <ControlTemplate.Triggers>
                             <DataTrigger Binding="{Binding IsBatchSelected}" Value="True">
-                                <Setter TargetName="Card" Property="BorderBrush" Value="#4FA3D8" />
+                                <Setter TargetName="Card" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                             </DataTrigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Card" Property="Opacity" Value="0.78" />
@@ -182,38 +229,40 @@
         </Style>
 
         <Style x:Key="TopTabStyle" TargetType="ToggleButton">
-            <Setter Property="Height" Value="42" />
-            <Setter Property="MinWidth" Value="74" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,30,0" />
-            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
-            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="MinWidth" Value="76" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="Margin" Value="0,0,14,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TopTabTextBrush}" />
+            <Setter Property="Background" Value="{DynamicResource TopTabIdleBrush}" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
-            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="Normal" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Grid Background="Transparent">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            <Border x:Name="Underline"
-                                    Height="2"
-                                    VerticalAlignment="Bottom"
-                                    Background="#4FA3D8"
-                                    CornerRadius="1"
-                                    Opacity="0" />
-                        </Grid>
+                        <Border x:Name="Root"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource TopTabHoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TopTabTextBrush}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter Property="Foreground" Value="#4FA3D8" />
-                                <Setter Property="FontWeight" Value="SemiBold" />
-                                <Setter TargetName="Underline" Property="Opacity" Value="1" />
+                                <Setter TargetName="Root" Property="Background" Value="Transparent" />
+                                <Setter Property="Foreground" Value="{DynamicResource TopTabSelectedTextBrush}" />
+                                <Setter Property="FontWeight" Value="Medium" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.78" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -261,6 +310,148 @@
             <Setter Property="Margin" Value="0,0,14,0" />
             <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
             <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <Style x:Key="LibraryToolActionStyle" TargetType="Button" BasedOn="{StaticResource TopToolbarActionStyle}">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="7,0" />
+            <Setter Property="Margin" Value="0,0,10,0" />
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                                <Setter Property="Opacity" Value="0.78" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LibrarySortComboBoxItemStyle" TargetType="ComboBoxItem">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemRoot"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="5">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemRoot" Property="Background" Value="{DynamicResource ControlHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemRoot" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LibrarySortComboBoxStyle" TargetType="ComboBox">
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="10,0,28,0" />
+            <Setter Property="Background" Value="{DynamicResource ControlSurfaceBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+            <Setter Property="FontFamily" Value="Microsoft YaHei UI" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="ItemContainerStyle" Value="{StaticResource LibrarySortComboBoxItemStyle}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid x:Name="Root">
+                            <Border x:Name="Field"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="6">
+                                <Grid>
+                                    <TextBlock Margin="{TemplateBinding Padding}"
+                                               HorizontalAlignment="Left"
+                                               VerticalAlignment="Center"
+                                               Foreground="{TemplateBinding Foreground}"
+                                               Text="{Binding SelectedItem.Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                               TextTrimming="CharacterEllipsis"
+                                               IsHitTestVisible="False" />
+                                    <TextBlock Margin="0,0,10,0"
+                                               HorizontalAlignment="Right"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource SecondaryTextBrush}"
+                                               FontFamily="Segoe MDL2 Assets"
+                                               FontSize="9"
+                                               IsHitTestVisible="False"
+                                               Text="&#xE70D;" />
+                                    <ToggleButton Background="Transparent"
+                                                  BorderThickness="0"
+                                                  ClickMode="Press"
+                                                  Focusable="False"
+                                                  FocusVisualStyle="{x:Null}"
+                                                  IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                        <ToggleButton.Template>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Background="Transparent" />
+                                            </ControlTemplate>
+                                        </ToggleButton.Template>
+                                    </ToggleButton>
+                                </Grid>
+                            </Border>
+                            <Popup x:Name="PART_Popup"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom"
+                                   PopupAnimation="Fade"
+                                   VerticalOffset="5">
+                                <Border Width="{Binding ActualWidth, ElementName=Root}"
+                                        Padding="4"
+                                        Background="{DynamicResource MainBackgroundBrush}"
+                                        CornerRadius="7">
+                                    <ScrollViewer Focusable="False"
+                                                  FocusVisualStyle="{x:Null}"
+                                                  HorizontalScrollBarVisibility="Disabled"
+                                                  VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Field" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsDropDownOpen" Value="True">
+                                <Setter TargetName="Field" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="GroupExpanderStyle" TargetType="Expander">
@@ -399,6 +590,12 @@
                                                 <Setter TargetName="StateText" Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
                                                 <Setter TargetName="ExpandGlyph" Property="Stroke" Value="{DynamicResource AccentDarkBrush}" />
                                             </Trigger>
+                                            <DataTrigger Binding="{Binding IsDragOver}" Value="True">
+                                                <Setter TargetName="HeaderBackground" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                                <Setter TargetName="StateText" Property="Text" Value="松开放入" />
+                                                <Setter TargetName="StateText" Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+                                                <Setter TargetName="ExpandGlyph" Property="Stroke" Value="{DynamicResource AccentDarkBrush}" />
+                                            </DataTrigger>
                                             <Trigger Property="IsPressed" Value="True">
                                                 <Setter Property="Opacity" Value="0.72" />
                                             </Trigger>
@@ -423,11 +620,14 @@
 
         <DataTemplate x:Key="BookCardTemplate">
             <Button Style="{StaticResource CardButtonStyle}"
+                    PreviewMouseLeftButtonDown="BookCard_PreviewMouseLeftButtonDown"
+                    PreviewMouseMove="BookCard_PreviewMouseMove"
+                    GiveFeedback="BookCard_GiveFeedback"
                     Click="BookCard_Click">
                 <Button.ContextMenu>
                     <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}"
                                  Opened="BookContextMenu_Opened">
-                        <MenuItem Header="正式阅读" Click="OpenNormally_Click" />
+                        <MenuItem Header="打开" Click="OpenNormally_Click" />
                         <MenuItem Header="用 LittleFish 打开" Click="OpenWithLittleFish_Click" />
                         <Separator />
                         <MenuItem x:Name="FavoriteMenuItem" Header="收藏 / 取消收藏" Click="ToggleFavorite_Click" />
@@ -439,7 +639,9 @@
                     </ContextMenu>
                 </Button.ContextMenu>
 
-                <Grid>
+                <Grid Width="120"
+                      Height="168"
+                      ClipToBounds="True">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="8" />
@@ -448,99 +650,222 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0">
-                        <TextBlock Text="{Binding Title}"
+                    <Grid Grid.RowSpan="5"
+                          Width="120"
+                          Height="168"
+                          Visibility="Collapsed">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasCover}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Border VerticalAlignment="Bottom"
+                                Height="72">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Offset="0" Color="#00FFFFFF" />
+                                    <GradientStop Offset="0.58" Color="#B8000000" />
+                                    <GradientStop Offset="1" Color="#DD000000" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                        </Border>
+                        <StackPanel Margin="10,0,10,12"
+                                    VerticalAlignment="Bottom">
+                            <TextBlock Text="{Binding Title}"
+                                       Foreground="White"
+                                       FontSize="12.5"
+                                       FontWeight="SemiBold"
+                                       LineHeight="17"
+                                       MaxHeight="36"
+                                       TextWrapping="Wrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Title}" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Text="{Binding Author}"
+                                       Foreground="#DDEAF0"
+                                       FontSize="10"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding Author}" />
+                            <TextBlock Margin="0,3,0,0"
+                                       Text="{Binding LastOpenedAtText}"
+                                       Foreground="#BFD5DE"
+                                       FontSize="9.5"
+                                       TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Grid.RowSpan="5"
+                          Margin="12,18,12,10">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasCover}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="8" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0"
+                                   Text="{Binding Title}"
                                    MaxWidth="96"
-                                   Foreground="{DynamicResource PrimaryTextBrush}"
-                                   FontSize="12"
-                                   FontWeight="SemiBold"
-                                   LineHeight="18"
+                                   Foreground="{DynamicResource AccentDarkBrush}"
+                                   FontSize="13"
+                                   FontWeight="Normal"
+                                   LineHeight="20"
+                                   LineStackingStrategy="BlockLineHeight"
+                                   TextOptions.TextFormattingMode="Ideal"
+                                   TextOptions.TextRenderingMode="ClearType"
                                    TextWrapping="Wrap"
                                    TextTrimming="CharacterEllipsis"
                                    ToolTip="{Binding Title}" />
-                        <Border Width="20"
-                                Height="20"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Top"
-                                Background="{DynamicResource LimeSoftBrush}"
-                                CornerRadius="10">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="Visibility" Value="Collapsed" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsFavorite}" Value="True">
-                                            <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                            <TextBlock HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       FontFamily="Segoe MDL2 Assets"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource LimeDarkBrush}"
-                                       Text="&#xEB51;" />
-                        </Border>
-                    </Grid>
 
-                    <TextBlock Grid.Row="2"
-                               Text="{Binding Author}"
-                               MaxWidth="96"
-                               Foreground="{DynamicResource SecondaryTextBrush}"
-                               FontSize="10.5"
-                               FontWeight="Normal"
-                               TextTrimming="CharacterEllipsis"
-                               ToolTip="{Binding Author}" />
+                        <TextBlock Grid.Row="2"
+                                   Text="{Binding Author}"
+                                   MaxWidth="96"
+                                   Foreground="{DynamicResource SecondaryTextBrush}"
+                                   FontSize="10.5"
+                                   FontWeight="Normal"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Author}" />
 
-                    <Grid Grid.Row="4">
-                        <Border Padding="7,3"
+                        <TextBlock Grid.Row="3"
+                                   Margin="0,0,0,8"
+                                   VerticalAlignment="Bottom"
+                                   Text="{Binding LastOpenedAtText}"
+                                   Foreground="{DynamicResource FaintTextBrush}"
+                                   FontSize="9.5"
+                                   TextTrimming="CharacterEllipsis" />
+
+                        <Border Grid.Row="4"
+                                Padding="7,3"
                                 HorizontalAlignment="Left"
-                                Background="{DynamicResource AccentSoftBrush}"
+                                Background="{DynamicResource BookCardChipBrush}"
                                 CornerRadius="7">
                             <TextBlock Text="{Binding FileSizeText}"
                                        Foreground="{DynamicResource SecondaryTextBrush}"
                                        FontSize="9.5"
                                        FontWeight="Normal" />
                         </Border>
-                        <TextBlock HorizontalAlignment="Right"
-                                   Foreground="#D45B64"
-                                   FontSize="9.5"
-                                   Text="文件已丢失"
-                                   Visibility="Collapsed">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed" />
+                    </Grid>
+
+                    <Button Width="24"
+                            Height="24"
+                            Margin="0,7,7,0"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Background="{DynamicResource BookCardChipBrush}"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            FocusVisualStyle="{x:Null}"
+                            ToolTip="收藏 / 取消收藏"
+                            Click="FavoriteStar_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Root"
+                                                    Background="{TemplateBinding Background}"
+                                                    CornerRadius="12">
+                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center" />
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Root" Property="Background" Value="White" />
+                                                </Trigger>
+                                                <Trigger Property="IsPressed" Value="True">
+                                                    <Setter Property="Opacity" Value="0.78" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsBulkMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <Path Width="15.5"
+                              Height="15.5"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Data="M 12,2.2 L 14.9,8.4 L 21.7,9 L 16.5,13.5 L 18,20.1 L 12,16.7 L 6,20.1 L 7.5,13.5 L 2.3,9 L 9.1,8.4 Z"
+                              Stretch="Uniform"
+                              StrokeThickness="1.7"
+                              StrokeLineJoin="Round">
+                            <Path.Style>
+                                <Style TargetType="Path">
+                                    <Setter Property="Fill" Value="Transparent" />
+                                    <Setter Property="Stroke" Value="{DynamicResource SecondaryTextBrush}" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsMissing}" Value="True">
-                                            <Setter Property="Visibility" Value="Visible" />
+                                        <DataTrigger Binding="{Binding IsFavorite}" Value="True">
+                                            <Setter Property="Fill" Value="{DynamicResource FavoriteStarBrush}" />
+                                            <Setter Property="Stroke" Value="{DynamicResource FavoriteStarBrush}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Grid>
+                            </Path.Style>
+                        </Path>
+                    </Button>
+
+                    <TextBlock Margin="0,0,10,10"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Bottom"
+                               Foreground="#D45B64"
+                               FontSize="9.5"
+                               Text="文件已丢失"
+                               Visibility="Collapsed">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
 
                     <Border Grid.RowSpan="5"
-                            Width="22"
-                            Height="22"
-                            Margin="0,-7,-5,0"
+                            Width="18"
+                            Height="18"
+                            Margin="0,7,7,0"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Top"
-                            BorderThickness="1.3"
-                            CornerRadius="11"
+                            BorderThickness="1.2"
+                            CornerRadius="9"
                             IsHitTestVisible="False">
                         <Border.Style>
                             <Style TargetType="Border">
                                 <Setter Property="Visibility" Value="Collapsed" />
-                                <Setter Property="Background" Value="#F8FBFD" />
-                                <Setter Property="BorderBrush" Value="{DynamicResource FaintTextBrush}" />
+                                <Setter Property="Background" Value="{DynamicResource BookCardChipBrush}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource BookCardBorderBrush}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding DataContext.IsBulkMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
                                         <Setter Property="Visibility" Value="Visible" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsBatchSelected}" Value="True">
-                                        <Setter Property="Background" Value="#4FA3D8" />
-                                        <Setter Property="BorderBrush" Value="#4FA3D8" />
+                                        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -548,7 +873,7 @@
                         <TextBlock HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
                                    FontFamily="Segoe MDL2 Assets"
-                                   FontSize="10"
+                                   FontSize="8.5"
                                    Foreground="White"
                                    Text="&#xE73E;">
                             <TextBlock.Style>
@@ -569,9 +894,16 @@
 
         <DataTemplate x:Key="GroupSectionTemplate">
             <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}"
-                      Style="{StaticResource GroupExpanderStyle}">
+                      Style="{StaticResource GroupExpanderStyle}"
+                      AllowDrop="True"
+                      PreviewDragOver="GroupSection_PreviewDragOver"
+                      DragLeave="GroupSection_DragLeave"
+                      Drop="GroupSection_Drop">
                 <ItemsControl ItemsSource="{Binding Books}"
-                              ItemTemplate="{StaticResource BookCardTemplate}">
+                              ItemTemplate="{StaticResource BookCardTemplate}"
+                              Focusable="False"
+                              FocusVisualStyle="{x:Null}"
+                              KeyboardNavigation.TabNavigation="None">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel />
@@ -607,119 +939,200 @@
                     CornerRadius="10,0,0,10"
                     ClipToBounds="True">
                 <Grid>
-                    <Border Width="176"
+                    <Border x:Name="SidebarBackground"
+                            Width="176"
                             HorizontalAlignment="Left"
                             Background="{DynamicResource SidebarBrush}"
                             CornerRadius="10,0,0,10"
                             IsHitTestVisible="False" />
 
-                    <Grid Width="38"
-                          Height="38"
-                          Margin="15,14,0,0"
-                          HorizontalAlignment="Left"
-                          VerticalAlignment="Top">
-                        <Grid>
-                            <Image x:Name="SeaSLogo"
-                                   Width="38"
-                                   Height="38"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   RenderOptions.BitmapScalingMode="HighQuality"
-                                   Source="Assets/seas.png"
-                                   Stretch="Uniform" />
-                            <Image x:Name="LittleFishLogo"
-                                   Width="32"
-                                   Height="32"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   RenderOptions.BitmapScalingMode="HighQuality"
-                                   Source="Assets/littlefish.png"
-                                   Stretch="Uniform"
-                                   Visibility="Collapsed" />
+                    <Grid x:Name="SidebarContent"
+                          Width="176"
+                          HorizontalAlignment="Left">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="68" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="57" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="17" />
+                        </Grid.RowDefinitions>
+
+                        <Grid x:Name="SidebarLogoHost"
+                              Width="38"
+                              Height="38"
+                              Margin="15,14,0,0"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Top">
+                            <Grid>
+                                <Image x:Name="SeaSLogo"
+                                       Width="38"
+                                       Height="38"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                       Source="Assets/seas.png"
+                                       Stretch="Uniform" />
+                                <Image x:Name="LittleFishLogo"
+                                       Width="38"
+                                       Height="38"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       RenderOptions.BitmapScalingMode="HighQuality"
+                                       Source="Assets/littlefish.png"
+                                       Stretch="Uniform"
+                                       Visibility="Collapsed" />
+                            </Grid>
                         </Grid>
-                    </Grid>
 
-                    <StackPanel x:Name="SidebarNavigation" Margin="16,84,0,0" VerticalAlignment="Top">
-                        <ToggleButton Tag="书架"
-                                      CommandParameter="all"
-                                      IsChecked="True"
-                                      Style="{StaticResource SidebarToggleStyle}"
-                                      Click="NavFilter_Click">
-                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Text="&#xE8F1;" />
-                        </ToggleButton>
-                        <ToggleButton Tag="最近阅读"
-                                      CommandParameter="recent"
-                                      Margin="0,7,0,0"
-                                      Style="{StaticResource SidebarToggleStyle}"
-                                      Click="NavFilter_Click">
-                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Text="&#xE823;" />
-                        </ToggleButton>
-                        <Button Tag="导入文件"
-                                Margin="0,7,0,0"
-                                Style="{StaticResource SidebarActionStyle}"
-                                Click="ImportFiles_Click">
-                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Text="&#xE8E5;" />
-                        </Button>
-                        <Button Tag="扫描文件夹"
-                                Margin="0,7,0,0"
-                                Style="{StaticResource SidebarActionStyle}"
-                                Click="ScanFolder_Click">
-                            <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Text="&#xE8B7;" />
-                        </Button>
-                    </StackPanel>
-
-                    <Button x:Name="ModeToggleButton"
-                            Tag="切换到摸鱼模式"
-                            Width="57"
-                            Height="57"
-                            Margin="5,329,0,0"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Top"
-                            Background="{DynamicResource ModeBrush}"
-                            BorderThickness="0"
-                            Foreground="{DynamicResource SidebarActiveTextBrush}"
-                            FocusVisualStyle="{x:Null}"
-                            Cursor="Hand"
-                            ToolTip="切换到摸鱼模式"
-                            Click="ModeToggleButton_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Grid Height="57" ClipToBounds="True">
-                                    <Border x:Name="ModeRoot"
-                                            Width="57"
-                                            HorizontalAlignment="Left"
-                                            Background="{TemplateBinding Background}"
-                                            CornerRadius="29">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    </Border>
-                                    <TextBlock Margin="70,0,6,0"
-                                               VerticalAlignment="Center"
-                                               Foreground="{DynamicResource SidebarActiveTextBrush}"
-                                               FontSize="13"
-                                               FontWeight="Normal"
-                                               Text="{TemplateBinding Tag}" />
+                        <StackPanel x:Name="SidebarNavigation"
+                                    Grid.Row="1"
+                                    Margin="16,16,0,0"
+                                    VerticalAlignment="Top">
+                            <ToggleButton Tag="书架"
+                                          CommandParameter="all"
+                                          IsChecked="True"
+                                          Style="{StaticResource SidebarToggleStyle}"
+                                          Click="NavFilter_Click">
+                                <Viewbox Width="17"
+                                         Height="17">
+                                    <Path Data="M216.8 212.2H44c-23.8 0-43.2 20.6-43.2 46v689.4c0 25.4 19.4 46 43.2 46h172.8c23.8 0 43.2-20.6 43.2-46V258c0-25.4-19.4-45.8-43.2-45.8z m-43.2 126.4H87.2c-12 0-21.6-10.2-21.6-23 0-12.6 9.6-23 21.6-23h86.4c12 0 21.6 10.2 21.6 23 0 12.6-9.8 23-21.6 23z m618.6-135.4l-163.8 44.6c-22.6 6.2-35.6 31-29.2 55.6l176.2 665.8c6.4 24.6 30 39.4 52.8 33.2L992 957.8c22.6-6.2 35.6-31 29.2-55.6L845 236.4c-6.6-24.6-30.2-39.4-52.8-33.2z m-8.6 133.2l-82 22.2c-11.4 3-23.2-4.4-26.4-16.6-3.2-12.2 3.2-24.6 14.6-27.8l82-22.2c11.4-3 23.2 4.4 26.4 16.6 3.2 12.2-3.4 24.8-14.6 27.8z m-261-308.2H349.8c-23.8 0-43.2 20.6-43.2 46v873.2c0 25.4 19.4 46 43.2 46h172.8c23.8 0 43.2-20.6 43.2-46V74.2c0-25.4-19.2-46-43.2-46z m-43.2 126.4H393c-12 0-21.6-10.2-21.6-23 0-12.6 9.6-23 21.6-23h86.4c12 0 21.6 10.2 21.6 23s-9.6 23-21.6 23z"
+                                          Style="{StaticResource SidebarToggleVectorIconStyle}" />
+                                </Viewbox>
+                            </ToggleButton>
+                            <ToggleButton Tag="最近阅读"
+                                          CommandParameter="recent"
+                                          Margin="0,7,0,0"
+                                          Style="{StaticResource SidebarToggleStyle}"
+                                          Click="NavFilter_Click">
+                                <Viewbox Width="17"
+                                         Height="17">
+                                    <Path Data="M506.88 88.669091c-231.330909 0-418.909091 187.578182-418.909091 418.909091s187.578182 418.909091 418.909091 418.909091 418.909091-187.578182 418.909091-418.909091-187.578182-418.909091-418.909091-418.909091z m178.036364 661.178182c-8.843636 8.378182-20.247273 12.567273-31.650909 12.567272-12.567273 0-24.901818-4.887273-33.978182-14.894545l-177.338182-190.836364V299.52c0-25.6 20.945455-46.545455 46.545454-46.545455s46.545455 20.945455 46.545455 46.545455v220.625455l152.436364 163.84c17.221818 18.850909 16.290909 48.407273-2.56 65.861818z"
+                                          Style="{StaticResource SidebarToggleVectorIconStyle}" />
+                                </Viewbox>
+                            </ToggleButton>
+                            <Button Tag="导入文件"
+                                    Margin="0,7,0,0"
+                                    Style="{StaticResource SidebarActionStyle}"
+                                    Click="ImportFiles_Click">
+                                <Grid Width="18"
+                                      Height="18">
+                                    <Viewbox Width="17"
+                                             Height="15.5"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Center">
+                                        <Path Data="M187.5 20.8333H105C101.667 20.8333 98.3333 19.5833 96.25 17.0833L82.9167 3.75C80.4167 1.25 77.5 0 74.1667 0H12.5C5.41667 0 0 5.41667 0 12.5V154.167C0 161.25 5.41667 166.667 12.5 166.667H187.5C194.583 166.667 200 161.25 200 154.167V33.3333C200 26.25 194.583 20.8333 187.5 20.8333ZM140.417 97.0833L105.417 134.583C103.75 136.25 101.667 137.083 99.1667 137.083C97.0833 137.083 94.5833 136.25 92.9167 134.583L57.9167 97.0833C52.9167 91.6667 56.6667 83.3333 64.1667 83.3333H83.3333V58.3333C83.3333 53.75 87.0833 50 91.6667 50H108.333C112.917 50 116.667 53.75 116.667 58.3333V83.3333H134.167C141.667 83.3333 145.417 92.0833 140.417 97.0833Z"
+                                              Style="{StaticResource SidebarActionVectorIconStyle}" />
+                                    </Viewbox>
                                 </Grid>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter TargetName="ModeRoot" Property="Opacity" Value="0.88" />
-                                    </Trigger>
-                                    <Trigger Property="IsPressed" Value="True">
-                                        <Setter TargetName="ModeRoot" Property="Opacity" Value="0.7" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Button.Template>
-                        <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="19" Text="&#xE8EE;" />
-                    </Button>
+                            </Button>
+                            <Button Tag="扫描文件夹"
+                                    Margin="0,7,0,0"
+                                    Style="{StaticResource SidebarActionStyle}"
+                                    Click="ScanFolder_Click">
+                                <Grid Width="18"
+                                      Height="18">
+                                    <Viewbox Width="17"
+                                             Height="15.5"
+                                             HorizontalAlignment="Center"
+                                             VerticalAlignment="Center">
+                                        <Viewbox.RenderTransform>
+                                            <TranslateTransform X="1"
+                                                                Y="2" />
+                                        </Viewbox.RenderTransform>
+                                        <Canvas Width="901.12"
+                                                Height="819.2">
+                                            <Path Canvas.Left="-61.44"
+                                                  Canvas.Top="-102.4"
+                                                  Data="M61.44 225.28a122.88 122.88 0 0 1 122.88-122.88h195.13344a81.92 81.92 0 0 1 73.27744 45.28128L512 266.24h327.68a122.88 122.88 0 0 1 122.88 122.88v409.6a122.88 122.88 0 0 1-122.88 122.88H184.32a122.88 122.88 0 0 1-122.88-122.88V225.28z"
+                                                  Style="{StaticResource SidebarActionVectorIconStyle}" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </Grid>
+                            </Button>
+                        </StackPanel>
 
-                    <Button x:Name="SettingsButton"
-                            Tag="设置"
-                            Style="{StaticResource SidebarActionStyle}"
-                            Margin="16,0,0,17"
-                            VerticalAlignment="Bottom"
-                            Click="Settings_Click">
-                        <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Text="&#xE713;" />
-                    </Button>
+                        <Button x:Name="ModeToggleButton"
+                                Grid.Row="0"
+                                Grid.RowSpan="7"
+                                Panel.ZIndex="2"
+                                Tag="切换到摸鱼模式"
+                                Width="57"
+                                Height="57"
+                                Margin="5,0,0,0"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Background="{DynamicResource ModeBrush}"
+                                BorderThickness="0"
+                                Foreground="{DynamicResource SidebarActiveTextBrush}"
+                                FocusVisualStyle="{x:Null}"
+                                Cursor="Hand"
+                                ToolTip="切换到摸鱼模式"
+                                Click="ModeToggleButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Grid Height="{TemplateBinding Height}" ClipToBounds="True">
+                                        <Border x:Name="ModeRoot"
+                                                Width="{TemplateBinding Height}"
+                                                Height="{TemplateBinding Height}"
+                                                HorizontalAlignment="Left"
+                                                Background="{TemplateBinding Background}"
+                                                CornerRadius="29">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <TextBlock Margin="70,0,6,0"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource SidebarActiveTextBrush}"
+                                                   FontSize="13"
+                                                   FontWeight="Normal"
+                                                   Text="{TemplateBinding Tag}" />
+                                    </Grid>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="ModeRoot" Property="Opacity" Value="0.88" />
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="ModeRoot" Property="Opacity" Value="0.7" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <TextBlock Foreground="{DynamicResource ModeIconBrush}"
+                                       FontFamily="Segoe MDL2 Assets"
+                                       FontSize="19"
+                                       Text="&#xE8EE;" />
+                        </Button>
+
+                        <StackPanel Grid.Row="5"
+                                    Margin="16,0,0,0">
+                            <Button x:Name="HelpButton"
+                                    AutomationProperties.Name="帮助"
+                                    Tag="帮助"
+                                    Style="{StaticResource SidebarActionStyle}"
+                                    Margin="0,0,0,7"
+                                    Click="OpenHelp_Click">
+                                <Grid Width="16" Height="16">
+                                    <Ellipse Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                             StrokeThickness="1.45" />
+                                    <TextBlock HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="0,-1,0,0"
+                                               FontFamily="Segoe UI"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Text="?" />
+                                </Grid>
+                            </Button>
+                            <Button x:Name="SettingsButton"
+                                    AutomationProperties.Name="设置"
+                                    Tag="设置"
+                                    Style="{StaticResource SidebarActionStyle}"
+                                    Click="OpenSettings_Click">
+                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16" Text="&#xE713;" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
 
@@ -740,10 +1153,25 @@
                         <ColumnDefinition Width="96" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel x:Name="ShelfTabsPanel"
-                                Grid.Column="0"
+                    <Grid x:Name="ShelfTabsHost"
+                          Grid.Column="0"
+                          VerticalAlignment="Center"
+                          ClipToBounds="False">
+                        <Border x:Name="TopTabSelectionSlider"
+                                Width="76"
+                                Height="32"
+                                HorizontalAlignment="Left"
                                 VerticalAlignment="Center"
-                                Orientation="Horizontal">
+                                Background="{DynamicResource TopTabSelectedBrush}"
+                                CornerRadius="10"
+                                IsHitTestVisible="False">
+                            <Border.RenderTransform>
+                                <TranslateTransform x:Name="TopTabSelectionSliderTransform" />
+                            </Border.RenderTransform>
+                        </Border>
+
+                        <StackPanel x:Name="ShelfTabsPanel"
+                                    Orientation="Horizontal">
                         <ToggleButton x:Name="AllBooksTab"
                                       Content="全部书籍"
                                       CommandParameter="all"
@@ -760,7 +1188,8 @@
                                       CommandParameter="favorite"
                                       Style="{StaticResource TopTabStyle}"
                                       Click="TopViewTab_Click" />
-                    </StackPanel>
+                        </StackPanel>
+                    </Grid>
 
                     <TextBlock x:Name="RecentViewTitle"
                                Grid.Column="0"
@@ -770,14 +1199,6 @@
                                FontWeight="SemiBold"
                                Text="最近阅读"
                                Visibility="Collapsed" />
-
-                    <TextBlock x:Name="ShelfCountText"
-                               Grid.Column="2"
-                               Margin="2,0,14,0"
-                               VerticalAlignment="Center"
-                               Foreground="{DynamicResource FaintTextBrush}"
-                               FontSize="11.5"
-                               Text="共 0 本" />
 
                     <Border Grid.Column="3"
                             Height="34"
@@ -826,7 +1247,7 @@
                         <Button Width="28" Height="28" Style="{StaticResource IconButtonStyle}" ToolTip="最小化" Click="MinimizeWindow_Click">
                             <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="11" Text="&#xE921;" />
                         </Button>
-                        <Button Width="28" Height="28" Margin="4,0,0,0" Style="{StaticResource IconButtonStyle}" ToolTip="最大化" Click="MaximizeWindow_Click">
+                        <Button x:Name="MaximizeWindowButton" Width="28" Height="28" Margin="4,0,0,0" Style="{StaticResource IconButtonStyle}" ToolTip="最大化" Click="MaximizeWindow_Click">
                             <TextBlock x:Name="MaximizeWindowIcon" FontFamily="Segoe MDL2 Assets" FontSize="11" Text="&#xE922;" />
                         </Button>
                         <Button Width="28" Height="28" Margin="4,0,0,0" Style="{StaticResource IconButtonStyle}" ToolTip="关闭" Click="CloseWindow_Click">
@@ -842,30 +1263,26 @@
                                   HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
                             <Border x:Name="LibraryToolsPanel"
-                                    Margin="0,0,0,14"
-                                    Padding="0,2,0,8"
-                                    Background="Transparent"
+                                    Margin="0,0,0,15"
+                                    Padding="10,5,10,7"
+                                    HorizontalAlignment="Left"
+                                    Background="{DynamicResource LibraryToolsBackgroundBrush}"
+                                    CornerRadius="16"
                                     Visibility="Collapsed">
                                 <Grid>
                                     <StackPanel x:Name="LibraryNormalToolsPanel"
                                                 HorizontalAlignment="Left"
+                                                VerticalAlignment="Center"
                                                 Orientation="Horizontal">
-                                        <TextBlock Margin="0,0,8,0"
+                                        <TextBlock Margin="0,0,7,0"
                                                    VerticalAlignment="Center"
                                                    Foreground="{DynamicResource FaintTextBrush}"
-                                                   FontSize="12"
+                                                   FontSize="12.5"
                                                    Text="排序" />
                                         <ComboBox x:Name="SortModeComboBox"
-                                                  Width="112"
-                                                  Height="30"
-                                                  Margin="0,0,8,0"
-                                                  Padding="8,0"
-                                                  VerticalContentAlignment="Center"
-                                                  Background="{DynamicResource ControlSurfaceBrush}"
-                                                  BorderBrush="{DynamicResource LineBrush}"
-                                                  BorderThickness="1"
-                                                  Foreground="{DynamicResource PrimaryTextBrush}"
-                                                  FontSize="12"
+                                                  Width="122"
+                                                  Margin="0,0,12,0"
+                                                  Style="{StaticResource LibrarySortComboBoxStyle}"
                                                   SelectedValuePath="Tag"
                                                   SelectionChanged="SortModeComboBox_SelectionChanged">
                                             <ComboBoxItem Tag="recent" Content="最近阅读" />
@@ -875,40 +1292,70 @@
                                             <ComboBoxItem Tag="progress" Content="阅读进度" />
                                         </ComboBox>
                                         <Button x:Name="SortDirectionButton"
-                                                Style="{StaticResource FlatGroupActionStyle}"
+                                                Style="{StaticResource LibraryToolActionStyle}"
                                                 Click="SortDirectionButton_Click">
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock x:Name="SortDirectionIcon"
-                                                           Margin="0,0,5,0"
-                                                           VerticalAlignment="Center"
-                                                           FontFamily="Segoe MDL2 Assets"
-                                                           FontSize="12"
-                                                           Text="&#xE74B;" />
+                                                <Border Width="22"
+                                                        Height="22"
+                                                        Margin="0,0,6,0"
+                                                        VerticalAlignment="Center"
+                                                        Background="Transparent"
+                                                        CornerRadius="6">
+                                                    <TextBlock x:Name="SortDirectionIcon"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource AccentDarkBrush}"
+                                                               FontFamily="Segoe MDL2 Assets"
+                                                               FontSize="11"
+                                                               Text="&#xE74B;" />
+                                                </Border>
                                                 <TextBlock x:Name="SortDirectionText"
                                                            VerticalAlignment="Center"
                                                            Text="降序" />
                                             </StackPanel>
                                         </Button>
-                                        <Button Style="{StaticResource FlatGroupActionStyle}" Click="EnterBulkMode_Click">
+                                        <Button Style="{StaticResource LibraryToolActionStyle}" Click="EnterBulkMode_Click">
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Margin="0,0,5,0"
-                                                           VerticalAlignment="Center"
-                                                           FontFamily="Segoe MDL2 Assets"
-                                                           FontSize="12"
-                                                           Text="&#xE762;" />
+                                                <Border Width="22"
+                                                        Height="22"
+                                                        Margin="0,0,6,0"
+                                                        VerticalAlignment="Center"
+                                                        Background="Transparent"
+                                                        CornerRadius="6">
+                                                    <TextBlock HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource LimeDarkBrush}"
+                                                               FontFamily="Segoe MDL2 Assets"
+                                                               FontSize="11"
+                                                               Text="&#xE762;" />
+                                                </Border>
                                                 <TextBlock VerticalAlignment="Center" Text="批量操作" />
                                             </StackPanel>
                                         </Button>
-                                        <Button Style="{StaticResource FlatGroupActionStyle}" Click="CheckMissingBooks_Click">
+                                        <Button Style="{StaticResource LibraryToolActionStyle}" Click="CheckMissingBooks_Click">
                                             <StackPanel Orientation="Horizontal">
-                                                <TextBlock Margin="0,0,5,0"
-                                                           VerticalAlignment="Center"
-                                                           FontFamily="Segoe MDL2 Assets"
-                                                           FontSize="12"
-                                                           Text="&#xE9D9;" />
-                                                <TextBlock VerticalAlignment="Center" Text="检测失效书籍" />
+                                                <Border Width="22"
+                                                        Height="22"
+                                                        Margin="0,0,6,0"
+                                                        VerticalAlignment="Center"
+                                                        Background="Transparent"
+                                                        CornerRadius="6">
+                                                    <TextBlock HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"
+                                                               Foreground="{DynamicResource WarmAccentBrush}"
+                                                               FontFamily="Segoe MDL2 Assets"
+                                                               FontSize="11"
+                                                               Text="&#xE9D9;" />
+                                                </Border>
+                                                <TextBlock VerticalAlignment="Center" Text="清理失效书籍" />
                                             </StackPanel>
                                         </Button>
+                                        <TextBlock x:Name="ShelfCountText"
+                                                   Margin="10,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource FaintTextBrush}"
+                                                   FontSize="11.5"
+                                                   Text="共 0 本" />
                                     </StackPanel>
 
                                     <StackPanel x:Name="BulkActionsPanel"
@@ -999,6 +1446,9 @@
                             <ItemsControl x:Name="GroupSectionsItemsControl"
                                           ItemsSource="{Binding GroupSections}"
                                           ItemTemplate="{StaticResource GroupSectionTemplate}"
+                                          Focusable="False"
+                                          FocusVisualStyle="{x:Null}"
+                                          KeyboardNavigation.TabNavigation="None"
                                           Visibility="Collapsed" />
 
                             <Grid x:Name="EmptyState" Height="330" Visibility="Collapsed">
@@ -1034,7 +1484,7 @@
                                                    HorizontalAlignment="Center"
                                                    Foreground="{DynamicResource SecondaryTextBrush}"
                                                    FontSize="12"
-                                                   Text="拖入 TXT 文件，或从左侧导入" />
+                                                   Text="拖入 TXT / EPUB / Markdown 文件，或从左侧导入" />
                                     </StackPanel>
                                 </Border>
                             </Grid>

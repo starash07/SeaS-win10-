@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -5,9 +6,11 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using SeaS.App.Models;
 using SeaS.App.Services;
+using Forms = System.Windows.Forms;
 using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace SeaS.App;
@@ -24,24 +27,49 @@ public partial class EmbeddedReaderControl : UserControl
         int ChapterIndex,
         int ParagraphIndex,
         int CharacterIndex,
+        string Keyword,
         string LocationText,
         string Preview);
     private sealed record PageAnchor(int ParagraphIndex, int CharacterIndex);
     private sealed record PageRunSegment(int StartCharacter, int Length, Run Run);
+    private sealed record ScrollAnchor(int ParagraphIndex, int CharacterIndex, double OffsetIntoLine);
+    private sealed record TextAnchor(
+        int ParagraphIndex,
+        int CharacterIndex,
+        string AnchorText,
+        int OffsetInAnchor,
+        double OffsetIntoLine);
+    private sealed record ReadingPositionSnapshot(
+        int ChapterIndex,
+        double ChapterProgress,
+        PageAnchor? PageAnchor,
+        ScrollAnchor? ScrollAnchor,
+        TextAnchor? TextAnchor);
 
     private const double ReaderHorizontalInset = 68;
     private const double MinContentWidthPercent = 60;
     private const double MaxContentWidthPercent = 100;
-    private const double ContentWidthPercentStep = 5;
     private const double FallbackContentWidth = 940;
+    private const double DefaultPageMarginPixels = 24;
+    private const double MinPageMarginPixels = 24;
+    private const double MaxPageMarginPixels = 260;
+    private const double PageMarginPixelsStep = 8;
+    private const double TwoColumnEnableContentWidth = 1320;
+    private const double TwoColumnDisableContentWidth = 1240;
+    private const double MinTwoColumnSingleColumnWidth = 420;
+    private const double TwoColumnGap = 56;
     private const double ImmersiveHorizontalInset = 28;
     private const double ImmersiveHotZoneWidth = 50;
     private const int MaxSearchMatches = 2000;
+    private const int TextAnchorBeforeChars = 24;
+    private const int TextAnchorAfterChars = 72;
+    private const int TextAnchorMinLength = 36;
 
     private readonly BookItem _book;
     private readonly LibraryState _state;
     private readonly Action _saveState;
     private readonly TxtBookDocument _document;
+    private readonly List<ReaderNavigationItem> _navigationItems;
     private readonly List<ReaderBookmark> _currentBookmarks = [];
     private readonly List<SearchMatch> _searchMatches = [];
     private readonly DispatcherTimer _progressSaveTimer;
@@ -52,10 +80,12 @@ public partial class EmbeddedReaderControl : UserControl
     private int _chapterIndex;
     private double _fontSize = 18;
     private double _lineHeight = 1.95;
-    private double _contentWidthPercent = 95;
+    private double _pageMarginPixels = DefaultPageMarginPixels;
     private FontFamily _readerFontFamily = new("Microsoft YaHei UI");
     private ReadingMode _readingMode = ReadingMode.Scroll;
     private string _theme = "white";
+    private string _customReaderBackgroundColor = "#F7FAFC";
+    private string _customReaderTextColor = "#3F4B52";
     private bool _immersiveMode;
     private bool _autoPageEnabled;
     private double _autoPageIntervalSeconds = 5;
@@ -66,21 +96,30 @@ public partial class EmbeddedReaderControl : UserControl
     private DynamicDocumentPaginator? _pagePaginator;
     private int _pageIndex;
     private int _pageCount = 1;
-    private PageAnchor? _pendingPageAnchor;
     private PageAnchor? _pendingRestorePageAnchor;
     private double? _pendingPageProgress;
+    private PageAnchor? _pendingReflowAnchor;
+    private TextAnchor? _pendingReflowTextAnchor;
+    private double? _pendingReflowProgress;
+    private int? _pendingReflowChapterIndex;
     private object? _pagePaginationUserState;
     private bool _isPagePaginationPending;
+    private bool _isTwoColumnLayoutActive;
     private bool _readerRailExpanded;
     private bool _isChromeVisible = true;
     private bool _isImmersiveRailVisible;
     private bool _suppressScrollProgress;
     private bool _isDraggingTotalProgress;
     private bool _isDraggingChapterProgress;
+    private bool _isDraggingSearchPanel;
     private string _activeSearchKeyword = string.Empty;
     private int _searchIndex = -1;
     private bool _suppressSearchSelection;
     private Window? _hostWindow;
+    private Point _searchPanelDragStart;
+    private Point _searchPanelTranslateStart;
+    private List<FontFamily> _fontFamilies = [];
+    private bool _suppressFontSearch;
 
     public event EventHandler? BackRequested;
     public event EventHandler? MinimizeRequested;
@@ -94,6 +133,18 @@ public partial class EmbeddedReaderControl : UserControl
         _state = state;
         _saveState = saveState;
         _document = TxtBookReader.Load(book);
+        _navigationItems = _document.NavigationItems.Count > 0
+            ? _document.NavigationItems
+            : _document.Chapters.Select((chapter, chapterIndex) => new ReaderNavigationItem
+            {
+                Number = chapterIndex + 1,
+                Title = chapter.Title,
+                ChapterIndex = chapterIndex
+            }).ToList();
+        FontFamilyList.AddHandler(
+            Mouse.PreviewMouseWheelEvent,
+            new MouseWheelEventHandler(FontFamilyList_PreviewMouseWheel),
+            handledEventsToo: true);
         _pageReflowTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
             Interval = TimeSpan.FromMilliseconds(180)
@@ -134,7 +185,7 @@ public partial class EmbeddedReaderControl : UserControl
 
         BookTitleText.Text = _document.Title;
         BookAuthorText.Text = _document.Author;
-        ChapterList.ItemsSource = _document.Chapters;
+        ChapterList.ItemsSource = _navigationItems;
 
         LoadReaderPreferences();
         InitializeFontList();
@@ -156,13 +207,15 @@ public partial class EmbeddedReaderControl : UserControl
     private void LoadReaderPreferences()
     {
         _state.ReaderPreferences ??= new ReaderPreferences();
+        _state.ShortcutPreferences ??= new ReaderShortcutPreferences();
+        _state.ShortcutPreferences.Normalize();
         var preferences = _state.ReaderPreferences;
         _fontSize = Math.Clamp(preferences.FontSize, 12, 32);
         _lineHeight = Math.Clamp(preferences.LineHeight, 1.2, 2.8);
-        _contentWidthPercent = Math.Clamp(
-            preferences.ContentWidthPercent,
-            MinContentWidthPercent,
-            MaxContentWidthPercent);
+        _pageMarginPixels = Math.Clamp(
+            preferences.PageMarginPixels ?? ConvertContentWidthPercentToPageMarginPixels(preferences.ContentWidthPercent),
+            MinPageMarginPixels,
+            MaxPageMarginPixels);
         _readerFontFamily = new FontFamily(
             string.IsNullOrWhiteSpace(preferences.FontFamily)
                 ? "Microsoft YaHei UI"
@@ -170,7 +223,9 @@ public partial class EmbeddedReaderControl : UserControl
         _readingMode = string.Equals(preferences.ReadingMode, "page", StringComparison.OrdinalIgnoreCase)
             ? ReadingMode.Page
             : ReadingMode.Scroll;
-        _theme = preferences.Theme is "eye" or "night" ? preferences.Theme : "white";
+        _theme = preferences.Theme is "eye" or "night" or "custom" ? preferences.Theme : "white";
+        _customReaderBackgroundColor = NormalizeColorOrDefault(preferences.CustomBackgroundColor, "#F7FAFC");
+        _customReaderTextColor = NormalizeColorOrDefault(preferences.CustomTextColor, "#3F4B52");
         _immersiveMode = preferences.ImmersiveMode;
         _autoPageEnabled = preferences.AutoPageEnabled;
         _autoPageIntervalSeconds = Math.Clamp(preferences.AutoPageIntervalSeconds, 1, 3600);
@@ -182,10 +237,13 @@ public partial class EmbeddedReaderControl : UserControl
         {
             FontSize = _fontSize,
             LineHeight = _lineHeight,
-            ContentWidthPercent = _contentWidthPercent,
+            ContentWidthPercent = ConvertPageMarginPixelsToContentWidthPercent(_pageMarginPixels),
+            PageMarginPixels = _pageMarginPixels,
             FontFamily = _readerFontFamily.Source,
             ReadingMode = _readingMode == ReadingMode.Page ? "page" : "scroll",
             Theme = _theme,
+            CustomBackgroundColor = _customReaderBackgroundColor,
+            CustomTextColor = _customReaderTextColor,
             ImmersiveMode = _immersiveMode,
             AutoPageEnabled = _autoPageEnabled,
             AutoPageIntervalSeconds = _autoPageIntervalSeconds
@@ -207,6 +265,7 @@ public partial class EmbeddedReaderControl : UserControl
         }
 
         UpdateReaderClip();
+        UpdateWindowActionVisuals();
         Focus();
         SetChromeVisible(!_immersiveMode);
         ConfigureAutoPageTimer();
@@ -235,7 +294,11 @@ public partial class EmbeddedReaderControl : UserControl
         }
     }
 
-    private void HostWindow_StateChanged(object? sender, EventArgs e) => UpdateReaderClip();
+    private void HostWindow_StateChanged(object? sender, EventArgs e)
+    {
+        UpdateReaderClip();
+        UpdateWindowActionVisuals();
+    }
 
     private void ReaderRoot_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateReaderClip();
 
@@ -255,22 +318,23 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void InitializeFontList()
     {
-        var fonts = Fonts.SystemFontFamilies
+        _fontFamilies = Fonts.SystemFontFamilies
             .OrderBy(font => font.Source, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
-        FontFamilyCombo.ItemsSource = fonts;
-        var preferred = fonts.FirstOrDefault(font => string.Equals(font.Source, _readerFontFamily.Source, StringComparison.OrdinalIgnoreCase))
-                        ?? fonts.FirstOrDefault(font => string.Equals(font.Source, "Microsoft YaHei UI", StringComparison.OrdinalIgnoreCase))
-                        ?? fonts.FirstOrDefault(font => string.Equals(font.Source, "Microsoft YaHei", StringComparison.OrdinalIgnoreCase))
-                        ?? fonts.FirstOrDefault();
+        FontFamilyList.ItemsSource = _fontFamilies;
+        var preferred = _fontFamilies.FirstOrDefault(font => string.Equals(font.Source, _readerFontFamily.Source, StringComparison.OrdinalIgnoreCase))
+                        ?? _fontFamilies.FirstOrDefault(font => string.Equals(font.Source, "Microsoft YaHei UI", StringComparison.OrdinalIgnoreCase))
+                        ?? _fontFamilies.FirstOrDefault(font => string.Equals(font.Source, "Microsoft YaHei", StringComparison.OrdinalIgnoreCase))
+                        ?? _fontFamilies.FirstOrDefault();
 
         if (preferred is not null)
         {
             _readerFontFamily = preferred;
-            FontFamilyCombo.SelectionChanged -= FontFamilyCombo_SelectionChanged;
-            FontFamilyCombo.SelectedItem = preferred;
-            FontFamilyCombo.SelectionChanged += FontFamilyCombo_SelectionChanged;
+            _suppressFontSearch = true;
+            FontFamilyList.SelectedItem = preferred;
+            FontFamilySearchBox.Text = preferred.Source;
+            _suppressFontSearch = false;
         }
     }
 
@@ -278,7 +342,8 @@ public partial class EmbeddedReaderControl : UserControl
         int index,
         double chapterProgress = 0,
         int paragraphIndex = -1,
-        int characterIndex = -1)
+        int characterIndex = -1,
+        int navigationIndex = -1)
     {
         if (_document.ChapterCount == 0)
         {
@@ -292,8 +357,14 @@ public partial class EmbeddedReaderControl : UserControl
         HeaderChapterTitleText.Text = chapter.Title;
 
         ChapterList.SelectionChanged -= ChapterList_SelectionChanged;
-        ChapterList.SelectedIndex = _chapterIndex;
-        ChapterList.ScrollIntoView(chapter);
+        var selectedNavigationIndex = navigationIndex >= 0 && navigationIndex < _navigationItems.Count
+            ? navigationIndex
+            : _navigationItems.FindIndex(item => item.ChapterIndex == _chapterIndex);
+        ChapterList.SelectedIndex = selectedNavigationIndex;
+        if (selectedNavigationIndex >= 0)
+        {
+            ChapterList.ScrollIntoView(_navigationItems[selectedNavigationIndex]);
+        }
         ChapterList.SelectionChanged += ChapterList_SelectionChanged;
 
         RenderChapter(chapter, chapterProgress, paragraphIndex, characterIndex);
@@ -343,15 +414,28 @@ public partial class EmbeddedReaderControl : UserControl
 
         RenderHeading(chapter);
 
-        if (chapter.Paragraphs.Count == 0)
+        var blocks = GetContentBlocks(chapter).ToList();
+        if (blocks.Count == 0)
         {
             AddEmptyParagraph();
             return;
         }
 
-        for (var index = 0; index < chapter.Paragraphs.Count; index++)
+        var textParagraphIndex = 0;
+        foreach (var block in blocks)
         {
-            ArticlePanel.Children.Add(CreateParagraphBlock(chapter.Paragraphs[index], index));
+            if (block.Kind == ReaderContentBlockKind.Image)
+            {
+                if (CreateImageBlock(block) is { } imageBlock)
+                {
+                    ArticlePanel.Children.Add(imageBlock);
+                }
+
+                continue;
+            }
+
+            ArticlePanel.Children.Add(CreateParagraphBlock(block.Text, textParagraphIndex));
+            textParagraphIndex++;
         }
     }
 
@@ -368,7 +452,7 @@ public partial class EmbeddedReaderControl : UserControl
             FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
             FontSize = 23,
             FontWeight = FontWeights.SemiBold,
-            Foreground = GetBrush("PrimaryTextBrush", "#3F4B52"),
+            Foreground = GetReaderTextBrush(),
             Text = AddTitleSpacing(chapter.Title),
             TextAlignment = TextAlignment.Center,
             TextWrapping = TextWrapping.Wrap
@@ -410,24 +494,30 @@ public partial class EmbeddedReaderControl : UserControl
         var pageHeight = Math.Max(320, ReaderBody.ActualHeight);
         var contentWidth = Math.Min(pageWidth, GetResponsiveContentWidth());
         var horizontalPadding = Math.Max(24, (pageWidth - contentWidth) / 2);
+        var useTwoColumns = ShouldUseTwoColumnLayout(contentWidth);
+        var columnGap = useTwoColumns ? TwoColumnGap : 0;
+        var columnWidth = useTwoColumns
+            ? Math.Max(320, (contentWidth - columnGap) / 2)
+            : double.PositiveInfinity;
 
         _pageDocument = new FlowDocument
         {
             PageWidth = pageWidth,
             PageHeight = pageHeight,
             PagePadding = new Thickness(horizontalPadding, 34, horizontalPadding, 34),
-            ColumnWidth = double.PositiveInfinity,
-            ColumnGap = 0,
+            ColumnWidth = columnWidth,
+            ColumnGap = columnGap,
             FontFamily = _readerFontFamily,
             FontSize = _fontSize,
-            Foreground = GetBrush("PrimaryTextBrush", "#3F4B52"),
-            Background = GetBrush("ReaderBackgroundBrush", "#F7FAFC"),
+            Foreground = GetReaderTextBrush(),
+            Background = GetReaderBackgroundBrush(),
             LineHeight = _fontSize * _lineHeight,
             TextAlignment = TextAlignment.Justify
         };
 
         AddPagedHeading(_pageDocument, chapter);
-        if (chapter.Paragraphs.Count == 0)
+        var blocks = GetContentBlocks(chapter).ToList();
+        if (blocks.Count == 0)
         {
             _pageDocument.Blocks.Add(new Paragraph(new Run("这一章暂时没有正文内容。"))
             {
@@ -438,9 +528,21 @@ public partial class EmbeddedReaderControl : UserControl
         }
         else
         {
-            for (var index = 0; index < chapter.Paragraphs.Count; index++)
+            var textParagraphIndex = 0;
+            foreach (var block in blocks)
             {
-                _pageDocument.Blocks.Add(CreatePagedParagraph(chapter.Paragraphs[index], index));
+                if (block.Kind == ReaderContentBlockKind.Image)
+                {
+                    if (CreatePagedImageBlock(block) is { } imageBlock)
+                    {
+                        _pageDocument.Blocks.Add(imageBlock);
+                    }
+
+                    continue;
+                }
+
+                _pageDocument.Blocks.Add(CreatePagedParagraph(block.Text, textParagraphIndex));
+                textParagraphIndex++;
             }
         }
 
@@ -451,7 +553,7 @@ public partial class EmbeddedReaderControl : UserControl
         _pagePaginationUserState = new object();
         _isPagePaginationPending = true;
 
-        ReaderBody.Background = GetBrush("ReaderBackgroundBrush", "#F7FAFC");
+        ReaderBody.Background = GetReaderBackgroundBrush();
         ReaderPageView.DocumentPaginator = _pagePaginator;
         ReaderPageView.PageNumber = 0;
         _pageIndex = 0;
@@ -460,6 +562,10 @@ public partial class EmbeddedReaderControl : UserControl
         if (paragraphIndex >= 0)
         {
             _pendingRestorePageAnchor = new PageAnchor(paragraphIndex, Math.Max(0, characterIndex));
+            if (chapterProgress > 0)
+            {
+                _pendingPageProgress = Math.Clamp(chapterProgress, 0, 1);
+            }
         }
         else if (chapterProgress > 0)
         {
@@ -495,7 +601,7 @@ public partial class EmbeddedReaderControl : UserControl
             FontFamily = new FontFamily("Segoe UI, Microsoft YaHei UI"),
             FontSize = 23,
             FontWeight = FontWeights.SemiBold,
-            Foreground = GetBrush("PrimaryTextBrush", "#3F4B52"),
+            Foreground = GetReaderTextBrush(),
             TextAlignment = TextAlignment.Center,
             KeepWithNext = true
         });
@@ -542,7 +648,7 @@ public partial class EmbeddedReaderControl : UserControl
             Margin = new Thickness(0, 0, 0, _fontSize * 0.62),
             FontFamily = _readerFontFamily,
             FontSize = _fontSize,
-            Foreground = GetBrush("PrimaryTextBrush", "#3F4B52"),
+            Foreground = GetReaderTextBrush(),
             LineHeight = _fontSize * _lineHeight,
             TextAlignment = TextAlignment.Justify,
             TextIndent = _fontSize * 2,
@@ -661,49 +767,313 @@ public partial class EmbeddedReaderControl : UserControl
         return paragraph.ContentEnd;
     }
 
-    private PageAnchor? CaptureCurrentPageAnchor()
+    private ReadingPositionSnapshot CaptureReadingPosition()
     {
-        if (_pagePaginator is null || _pageDocument is null || _isPagePaginationPending)
+        var progress = _document.ChapterCount == 0 ? 0 : GetChapterProgress();
+        var pageAnchor = _readingMode == ReadingMode.Page ? CaptureCurrentPageAnchor() : null;
+        var scrollAnchor = _readingMode == ReadingMode.Scroll ? CaptureScrollAnchor() : null;
+        return new ReadingPositionSnapshot(
+            _chapterIndex,
+            progress,
+            pageAnchor,
+            scrollAnchor,
+            CaptureTextAnchor(pageAnchor, scrollAnchor));
+    }
+
+    private TextAnchor? CaptureTextAnchor(PageAnchor? pageAnchor, ScrollAnchor? scrollAnchor)
+    {
+        if (_document.ChapterCount == 0)
         {
             return null;
         }
 
-        DocumentPage page;
-        try
+        var paragraphIndex = -1;
+        var characterIndex = 0;
+        var offsetIntoLine = 0d;
+        if (_readingMode == ReadingMode.Page && pageAnchor is not null)
         {
-            page = _pagePaginator.GetPage(_pageIndex);
+            paragraphIndex = pageAnchor.ParagraphIndex;
+            characterIndex = pageAnchor.CharacterIndex;
         }
-        catch (InvalidOperationException)
+        else if (_readingMode == ReadingMode.Scroll && scrollAnchor is not null)
         {
-            return null;
+            paragraphIndex = scrollAnchor.ParagraphIndex;
+            characterIndex = scrollAnchor.CharacterIndex;
+            offsetIntoLine = scrollAnchor.OffsetIntoLine;
         }
-        if (ReferenceEquals(page, DocumentPage.Missing)
-            || _pagePaginator.GetPagePosition(page) is not TextPointer pagePosition)
+
+        return CreateTextAnchor(paragraphIndex, characterIndex, offsetIntoLine);
+    }
+
+    private TextAnchor? CreateTextAnchor(int paragraphIndex, int characterIndex, double offsetIntoLine)
+    {
+        if (_document.ChapterCount == 0
+            || paragraphIndex < 0
+            || GetTextParagraph(_document.Chapters[_chapterIndex], paragraphIndex) is not { Length: > 0 } paragraph)
         {
             return null;
         }
 
-        var paragraph = pagePosition.Paragraph;
-        if (paragraph is null || !_pageParagraphIndices.TryGetValue(paragraph, out var paragraphIndex))
+        var targetIndex = Math.Clamp(characterIndex, 0, paragraph.Length - 1);
+        var start = Math.Max(0, targetIndex - TextAnchorBeforeChars);
+        var end = Math.Min(paragraph.Length, targetIndex + TextAnchorAfterChars);
+        var desiredLength = Math.Min(paragraph.Length, TextAnchorMinLength);
+
+        if (end - start < desiredLength)
         {
-            paragraph = _pageParagraphIndices.Keys
-                .Where(item => item.ContentEnd.CompareTo(pagePosition) >= 0)
-                .OrderBy(item => _pageParagraphIndices[item])
-                .FirstOrDefault();
-            if (paragraph is null || !_pageParagraphIndices.TryGetValue(paragraph, out paragraphIndex))
+            var missing = desiredLength - (end - start);
+            var extraBefore = Math.Min(start, missing);
+            start -= extraBefore;
+            missing -= extraBefore;
+            end = Math.Min(paragraph.Length, end + missing);
+        }
+
+        var anchorText = paragraph[start..end];
+        if (string.IsNullOrWhiteSpace(anchorText))
+        {
+            return null;
+        }
+
+        return new TextAnchor(
+            paragraphIndex,
+            targetIndex,
+            anchorText,
+            targetIndex - start,
+            offsetIntoLine);
+    }
+
+    private static TextAnchor? CreateTextAnchor(ReaderBookmark bookmark)
+    {
+        if (bookmark.ParagraphIndex is not { } paragraphIndex
+            || bookmark.CharacterIndex is not { } characterIndex
+            || string.IsNullOrWhiteSpace(bookmark.AnchorText))
+        {
+            return null;
+        }
+
+        return new TextAnchor(
+            paragraphIndex,
+            Math.Max(0, characterIndex),
+            bookmark.AnchorText,
+            Math.Max(0, bookmark.AnchorOffset),
+            bookmark.AnchorLineOffset);
+    }
+
+    private PageAnchor? ResolveTextAnchor(TextAnchor? anchor, int chapterIndex = -1)
+    {
+        if (anchor is null
+            || string.IsNullOrEmpty(anchor.AnchorText)
+            || _document.ChapterCount == 0)
+        {
+            return null;
+        }
+
+        var targetChapterIndex = chapterIndex < 0
+            ? _chapterIndex
+            : Math.Clamp(chapterIndex, 0, _document.ChapterCount - 1);
+        var chapter = _document.Chapters[targetChapterIndex];
+        PageAnchor? bestAnchor = null;
+        var bestScore = double.PositiveInfinity;
+
+        for (var paragraphIndex = 0; paragraphIndex < chapter.Paragraphs.Count; paragraphIndex++)
+        {
+            var paragraph = chapter.Paragraphs[paragraphIndex];
+            var searchStart = 0;
+            while (searchStart < paragraph.Length)
             {
-                return new PageAnchor(0, 0);
+                var matchIndex = paragraph.IndexOf(anchor.AnchorText, searchStart, StringComparison.Ordinal);
+                if (matchIndex < 0)
+                {
+                    break;
+                }
+
+                var characterIndex = Math.Clamp(
+                    matchIndex + anchor.OffsetInAnchor,
+                    0,
+                    Math.Max(0, paragraph.Length - 1));
+                var paragraphDistance = Math.Abs(paragraphIndex - anchor.ParagraphIndex);
+                var characterDistance = paragraphIndex == anchor.ParagraphIndex
+                    ? Math.Abs(characterIndex - anchor.CharacterIndex)
+                    : 0;
+                var score = paragraphDistance * 100000d + characterDistance;
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestAnchor = new PageAnchor(paragraphIndex, characterIndex);
+                }
+
+                searchStart = matchIndex + Math.Max(1, anchor.AnchorText.Length);
             }
         }
 
-        var characterIndex = 0;
-        if (pagePosition.CompareTo(paragraph.ContentStart) > 0
-            && pagePosition.CompareTo(paragraph.ContentEnd) < 0)
+        return bestAnchor ?? ResolveTextAnchorByFallbackSnippet(anchor, targetChapterIndex);
+    }
+
+    private PageAnchor? ResolveTextAnchorByFallbackSnippet(TextAnchor anchor, int chapterIndex)
+    {
+        if (anchor.AnchorText.Length < 12 || _document.ChapterCount == 0)
         {
-            characterIndex = new TextRange(paragraph.ContentStart, pagePosition).Text.Length;
+            return null;
         }
 
-        return new PageAnchor(paragraphIndex, Math.Max(0, characterIndex));
+        var snippetStart = Math.Clamp(anchor.OffsetInAnchor - 8, 0, Math.Max(0, anchor.AnchorText.Length - 12));
+        var snippetLength = Math.Min(24, anchor.AnchorText.Length - snippetStart);
+        if (snippetLength < 12)
+        {
+            return null;
+        }
+
+        var snippet = anchor.AnchorText.Substring(snippetStart, snippetLength);
+        var adjustedOffset = anchor.OffsetInAnchor - snippetStart;
+        var fallbackAnchor = anchor with
+        {
+            AnchorText = snippet,
+            OffsetInAnchor = Math.Clamp(adjustedOffset, 0, snippet.Length - 1)
+        };
+
+        var targetChapterIndex = Math.Clamp(chapterIndex, 0, _document.ChapterCount - 1);
+        var chapter = _document.Chapters[targetChapterIndex];
+        PageAnchor? bestAnchor = null;
+        var bestScore = double.PositiveInfinity;
+        for (var paragraphIndex = 0; paragraphIndex < chapter.Paragraphs.Count; paragraphIndex++)
+        {
+            var paragraph = chapter.Paragraphs[paragraphIndex];
+            var searchStart = 0;
+            while (searchStart < paragraph.Length)
+            {
+                var matchIndex = paragraph.IndexOf(fallbackAnchor.AnchorText, searchStart, StringComparison.Ordinal);
+                if (matchIndex < 0)
+                {
+                    break;
+                }
+
+                var characterIndex = Math.Clamp(
+                    matchIndex + fallbackAnchor.OffsetInAnchor,
+                    0,
+                    Math.Max(0, paragraph.Length - 1));
+                var score = Math.Abs(paragraphIndex - fallbackAnchor.ParagraphIndex) * 100000d
+                            + (paragraphIndex == fallbackAnchor.ParagraphIndex
+                                ? Math.Abs(characterIndex - fallbackAnchor.CharacterIndex)
+                                : 0);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestAnchor = new PageAnchor(paragraphIndex, characterIndex);
+                }
+
+                searchStart = matchIndex + Math.Max(1, fallbackAnchor.AnchorText.Length);
+            }
+        }
+
+        return bestAnchor;
+    }
+
+    private static string? GetTextParagraph(ReaderChapter chapter, int paragraphIndex)
+    {
+        return paragraphIndex >= 0 && paragraphIndex < chapter.Paragraphs.Count
+            ? chapter.Paragraphs[paragraphIndex]
+            : null;
+    }
+
+    private PageAnchor? CaptureCurrentPageAnchor()
+    {
+        if (_readingMode != ReadingMode.Page
+            || _pagePaginator is null
+            || _pageRunSegments.Count == 0)
+        {
+            return null;
+        }
+
+        var currentPage = Math.Clamp(_pageIndex, 0, Math.Max(0, _pageCount - 1));
+        PageAnchor? lastAnchor = null;
+        foreach (var entry in _pageRunSegments.OrderBy(item => item.Key))
+        {
+            foreach (var segment in entry.Value.OrderBy(item => item.StartCharacter))
+            {
+                var startAnchor = new PageAnchor(entry.Key, segment.StartCharacter);
+                var endAnchor = new PageAnchor(
+                    entry.Key,
+                    segment.StartCharacter + Math.Max(0, segment.Length - 1));
+                if (!TryGetPageNumber(startAnchor, out var startPage)
+                    || !TryGetPageNumber(endAnchor, out var endPage))
+                {
+                    continue;
+                }
+
+                if (endPage < startPage)
+                {
+                    (startPage, endPage) = (endPage, startPage);
+                }
+
+                if (currentPage < startPage)
+                {
+                    return startAnchor;
+                }
+
+                if (currentPage > endPage)
+                {
+                    lastAnchor = endAnchor;
+                    continue;
+                }
+
+                return FindFirstAnchorOnPage(entry.Key, segment, currentPage) ?? startAnchor;
+            }
+        }
+
+        return lastAnchor;
+    }
+
+    private PageAnchor? FindFirstAnchorOnPage(int paragraphIndex, PageRunSegment segment, int targetPage)
+    {
+        var low = segment.StartCharacter;
+        var high = segment.StartCharacter + Math.Max(0, segment.Length - 1);
+        PageAnchor? best = null;
+
+        while (low <= high)
+        {
+            var middle = low + (high - low) / 2;
+            var anchor = new PageAnchor(paragraphIndex, middle);
+            if (!TryGetPageNumber(anchor, out var pageNumber))
+            {
+                break;
+            }
+
+            if (pageNumber >= targetPage)
+            {
+                best = anchor;
+                high = middle - 1;
+            }
+            else
+            {
+                low = middle + 1;
+            }
+        }
+
+        return best;
+    }
+
+    private bool TryGetPageNumber(TextPointer position, out int pageNumber)
+    {
+        pageNumber = 0;
+        if (_pagePaginator is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            pageNumber = Math.Max(0, _pagePaginator.GetPageNumber(position));
+            _pageCount = Math.Max(_pageCount, Math.Max(_pagePaginator.PageCount, pageNumber + 1));
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     private bool ShowPage(int pageNumber, int animateDirection)
@@ -803,6 +1173,10 @@ public partial class EmbeddedReaderControl : UserControl
         _pageDocument = null;
         _pendingRestorePageAnchor = null;
         _pendingPageProgress = null;
+        _pendingReflowAnchor = null;
+        _pendingReflowTextAnchor = null;
+        _pendingReflowProgress = null;
+        _pendingReflowChapterIndex = null;
         _pagePaginationUserState = null;
         _isPagePaginationPending = false;
     }
@@ -814,7 +1188,7 @@ public partial class EmbeddedReaderControl : UserControl
             Margin = new Thickness(0, 0, 0, _fontSize * (_readingMode == ReadingMode.Page ? 0.62 : 0.85)),
             FontFamily = _readerFontFamily,
             FontSize = _fontSize,
-            Foreground = GetBrush("PrimaryTextBrush", "#3F4B52"),
+            Foreground = GetReaderTextBrush(),
             LineHeight = _fontSize * _lineHeight,
             TextAlignment = TextAlignment.Justify,
             TextWrapping = TextWrapping.Wrap,
@@ -879,6 +1253,118 @@ public partial class EmbeddedReaderControl : UserControl
         });
     }
 
+    private static IEnumerable<ReaderContentBlock> GetContentBlocks(ReaderChapter chapter)
+    {
+        if (chapter.Blocks.Count > 0)
+        {
+            return chapter.Blocks;
+        }
+
+        return chapter.Paragraphs.Select(paragraph => new ReaderContentBlock
+        {
+            Kind = ReaderContentBlockKind.Text,
+            Text = paragraph
+        });
+    }
+
+    private FrameworkElement? CreateImageBlock(ReaderContentBlock block)
+    {
+        if (CreateReaderImage(block, maxWidth: 840, maxHeight: 980) is not { } image)
+        {
+            return null;
+        }
+
+        return new Border
+        {
+            Margin = new Thickness(0, 8, 0, 28),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            CornerRadius = new CornerRadius(10),
+            Background = GetBrush("MainBackgroundBrush", "#FFFFFF"),
+            Child = image
+        };
+    }
+
+    private BlockUIContainer? CreatePagedImageBlock(ReaderContentBlock block)
+    {
+        if (CreateReaderImage(block, maxWidth: 840, maxHeight: 980) is not { } image)
+        {
+            return null;
+        }
+
+        return new BlockUIContainer(image)
+        {
+            Margin = new Thickness(0, 8, 0, 28)
+        };
+    }
+
+    private Image? CreateReaderImage(ReaderContentBlock block, double maxWidth, double maxHeight)
+    {
+        if (block.ImageBytes is not { Length: > 0 } bytes)
+        {
+            return null;
+        }
+
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.StreamSource = new MemoryStream(bytes);
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            var image = new Image
+            {
+                Source = bitmap,
+                MaxWidth = maxWidth,
+                MaxHeight = maxHeight,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Cursor = Cursors.Hand,
+                ToolTip = string.IsNullOrWhiteSpace(block.ImageAlt) ? "点击查看图片" : block.ImageAlt,
+                Tag = bitmap
+            };
+            RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+            image.MouseLeftButtonUp += ReaderImage_MouseLeftButtonUp;
+            return image;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void ReaderImage_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if ((sender as Image)?.Tag is not BitmapSource bitmap)
+        {
+            return;
+        }
+
+        ReaderImagePreview.Source = bitmap;
+        ReaderImagePreviewOverlay.Visibility = Visibility.Visible;
+        e.Handled = true;
+    }
+
+    private void ReaderImagePreviewOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ReferenceEquals(e.OriginalSource, ReaderImagePreviewOverlay))
+        {
+            CloseReaderImagePreview();
+        }
+    }
+
+    private void CloseReaderImagePreview_Click(object sender, RoutedEventArgs e)
+    {
+        CloseReaderImagePreview();
+    }
+
+    private void CloseReaderImagePreview()
+    {
+        ReaderImagePreview.Source = null;
+        ReaderImagePreviewOverlay.Visibility = Visibility.Collapsed;
+    }
+
     private void AnimatePageTurn(int direction)
     {
         if (direction == 0 || !IsLoaded)
@@ -903,16 +1389,6 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void RebuildCurrentChapter(bool keepProgress)
     {
-        if (keepProgress && _readingMode == ReadingMode.Page)
-        {
-            var anchor = CaptureCurrentPageAnchor();
-            NavigateToChapter(
-                _chapterIndex,
-                paragraphIndex: anchor?.ParagraphIndex ?? -1,
-                characterIndex: anchor?.CharacterIndex ?? -1);
-            return;
-        }
-
         var progress = keepProgress ? GetChapterProgress() : 0;
         NavigateToChapter(_chapterIndex, progress);
     }
@@ -938,6 +1414,160 @@ public partial class EmbeddedReaderControl : UserControl
         ReaderScrollViewer.ScrollToVerticalOffset(Math.Clamp(progress, 0, 1) * scrollable);
         _suppressScrollProgress = false;
         UpdateProgress();
+    }
+
+    private ScrollAnchor? CaptureScrollAnchor()
+    {
+        if (_readingMode != ReadingMode.Scroll || ArticlePanel.Children.Count == 0)
+        {
+            return null;
+        }
+
+        var currentOffset = ReaderScrollViewer.VerticalOffset;
+        foreach (var child in ArticlePanel.Children.OfType<FrameworkElement>())
+        {
+            if (child.Tag is not int paragraphIndex || !TryGetArticleChildTop(child, out var top))
+            {
+                continue;
+            }
+
+            var bottom = top + child.ActualHeight;
+            if (bottom < currentOffset)
+            {
+                continue;
+            }
+
+            if (child is TextBlock textBlock && textBlock.Text.Length > 0)
+            {
+                var localY = Math.Clamp(currentOffset - top, 0, Math.Max(0, textBlock.ActualHeight - 1));
+                var characterIndex = GetTextBlockCharacterIndex(textBlock, localY);
+                var characterRect = GetTextBlockCharacterRect(textBlock, characterIndex);
+                return new ScrollAnchor(paragraphIndex, characterIndex, localY - characterRect.Y);
+            }
+
+            return new ScrollAnchor(paragraphIndex, 0, Math.Max(0, currentOffset - top));
+        }
+
+        return null;
+    }
+
+    private bool TryRestoreScrollAnchor(ScrollAnchor anchor)
+    {
+        foreach (var child in ArticlePanel.Children.OfType<FrameworkElement>())
+        {
+            if (child.Tag is not int paragraphIndex
+                || paragraphIndex != anchor.ParagraphIndex
+                || !TryGetArticleChildTop(child, out var top))
+            {
+                continue;
+            }
+
+            var targetOffset = top + anchor.OffsetIntoLine;
+            if (child is TextBlock textBlock && textBlock.Text.Length > 0)
+            {
+                var characterIndex = Math.Clamp(anchor.CharacterIndex, 0, Math.Max(0, textBlock.Text.Length - 1));
+                var characterRect = GetTextBlockCharacterRect(textBlock, characterIndex);
+                targetOffset = top + characterRect.Y + anchor.OffsetIntoLine;
+            }
+
+            _suppressScrollProgress = true;
+            ReaderScrollViewer.ScrollToVerticalOffset(
+                Math.Clamp(targetOffset, 0, GetScrollableHeight()));
+            _suppressScrollProgress = false;
+            UpdateProgress();
+            return true;
+        }
+
+        return false;
+    }
+
+    private static int GetTextBlockCharacterIndex(TextBlock textBlock, double localY)
+    {
+        var position = textBlock.GetPositionFromPoint(new Point(0, localY), snapToText: true);
+        if (position is null)
+        {
+            return 0;
+        }
+
+        return Math.Clamp(
+            textBlock.ContentStart.GetOffsetToPosition(position),
+            0,
+            Math.Max(0, textBlock.Text.Length - 1));
+    }
+
+    private static Rect GetTextBlockCharacterRect(TextBlock textBlock, int characterIndex)
+    {
+        var position = textBlock.ContentStart.GetPositionAtOffset(
+                           Math.Clamp(characterIndex, 0, Math.Max(0, textBlock.Text.Length - 1)),
+                           LogicalDirection.Forward)
+                       ?? textBlock.ContentStart;
+        return position.GetCharacterRect(LogicalDirection.Forward);
+    }
+
+    private static bool TryGetArticleChildTop(FrameworkElement child, out double top)
+    {
+        top = 0;
+        if (child.Parent is not Visual parent)
+        {
+            return false;
+        }
+
+        try
+        {
+            top = child.TransformToAncestor(parent).Transform(new Point(0, 0)).Y;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private void RestoreReadingPositionAfterLayout(ReadingPositionSnapshot snapshot, bool forcePageReflow)
+    {
+        if (_document.ChapterCount == 0 || snapshot.ChapterIndex != _chapterIndex)
+        {
+            return;
+        }
+
+        if (_readingMode == ReadingMode.Page)
+        {
+            _pendingReflowChapterIndex = snapshot.ChapterIndex;
+            _pendingReflowTextAnchor = snapshot.TextAnchor ?? _pendingReflowTextAnchor;
+            _pendingReflowAnchor = snapshot.PageAnchor ?? _pendingReflowAnchor;
+            _pendingReflowProgress = snapshot.ChapterProgress;
+            if (forcePageReflow)
+            {
+                _pageReflowTimer.Stop();
+                _pageReflowTimer.Start();
+            }
+
+            return;
+        }
+
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_document.ChapterCount == 0 || snapshot.ChapterIndex != _chapterIndex)
+            {
+                return;
+            }
+
+            ReaderScrollViewer.UpdateLayout();
+            ArticlePanel.UpdateLayout();
+            var resolvedAnchor = ResolveTextAnchor(snapshot.TextAnchor);
+            var scrollAnchor = resolvedAnchor is not null
+                ? new ScrollAnchor(
+                    resolvedAnchor.ParagraphIndex,
+                    resolvedAnchor.CharacterIndex,
+                    snapshot.TextAnchor?.OffsetIntoLine ?? snapshot.ScrollAnchor?.OffsetIntoLine ?? 0)
+                : snapshot.ScrollAnchor;
+            if (scrollAnchor is null || !TryRestoreScrollAnchor(scrollAnchor))
+            {
+                ScrollToChapterProgress(snapshot.ChapterProgress);
+            }
+
+            UpdateProgress();
+        }, DispatcherPriority.Loaded);
     }
 
     private double GetScrollableHeight()
@@ -1132,6 +1762,11 @@ public partial class EmbeddedReaderControl : UserControl
     {
         var progress = _document.ChapterCount > 0 ? GetChapterProgress() : 0;
         _readingMode = mode;
+        if (mode != ReadingMode.Page)
+        {
+            _isTwoColumnLayoutActive = false;
+        }
+
         ReaderScrollViewer.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
         PreviousButtonText.Text = mode == ReadingMode.Page ? "上一页" : "上一章";
         NextButtonText.Text = mode == ReadingMode.Page ? "下一页" : "下一章";
@@ -1177,6 +1812,7 @@ public partial class EmbeddedReaderControl : UserControl
         SearchButton.CommandParameter = shouldOpen ? "Active" : null;
         if (shouldOpen)
         {
+            ClampSearchPanelPosition();
             RefreshSearchResultsFromInput();
             ReaderSearchBox.Focus();
             ReaderSearchBox.SelectAll();
@@ -1227,15 +1863,15 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void ChapterList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ChapterList.SelectedIndex < 0)
+        if (ChapterList.SelectedItem is not ReaderNavigationItem navigationItem)
         {
             return;
         }
 
-        if (ChapterList.SelectedIndex != _chapterIndex)
-        {
-            NavigateToChapter(ChapterList.SelectedIndex);
-        }
+        NavigateToChapter(
+            navigationItem.ChapterIndex,
+            paragraphIndex: navigationItem.ParagraphIndex,
+            navigationIndex: ChapterList.SelectedIndex);
 
         ClosePanels();
     }
@@ -1253,18 +1889,12 @@ public partial class EmbeddedReaderControl : UserControl
         BookmarkList.Visibility = _currentBookmarks.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         BookmarkEmptyState.Visibility = _currentBookmarks.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         DeleteBookmarkButton.IsEnabled = false;
-        RenameBookmarkButton.IsEnabled = false;
     }
 
     private void BookmarkList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         var selected = BookmarkList.SelectedItem as ReaderBookmark;
         DeleteBookmarkButton.IsEnabled = selected is not null;
-        RenameBookmarkButton.IsEnabled = selected is not null;
-        if (selected is not null)
-        {
-            BookmarkNameBox.Text = selected.Title;
-        }
     }
 
     private void AddBookmark_Click(object sender, RoutedEventArgs e)
@@ -1278,37 +1908,23 @@ public partial class EmbeddedReaderControl : UserControl
         var progress = GetChapterProgress();
         var percent = Math.Round(progress * 100);
         var customTitle = BookmarkNameBox.Text.Trim();
+        var textAnchor = CaptureReadingPosition().TextAnchor;
         _state.Bookmarks.Add(new ReaderBookmark
         {
             FilePath = _book.FilePath,
             ChapterIndex = _chapterIndex,
             ChapterProgress = progress,
+            ParagraphIndex = textAnchor?.ParagraphIndex,
+            CharacterIndex = textAnchor?.CharacterIndex,
+            AnchorText = textAnchor?.AnchorText ?? string.Empty,
+            AnchorOffset = textAnchor?.OffsetInAnchor ?? 0,
+            AnchorLineOffset = textAnchor?.OffsetIntoLine ?? 0,
             Title = string.IsNullOrWhiteSpace(customTitle)
                 ? $"第 {chapter.Number:00} 章 · {percent:0}% · {chapter.Title}"
                 : customTitle,
             CreatedAt = DateTime.Now
         });
 
-        RefreshBookmarks();
-        BookmarkNameBox.Clear();
-        _saveState();
-    }
-
-    private void RenameBookmark_Click(object sender, RoutedEventArgs e)
-    {
-        if (BookmarkList.SelectedItem is not ReaderBookmark bookmark)
-        {
-            return;
-        }
-
-        var title = BookmarkNameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(title))
-        {
-            BookmarkNameBox.Focus();
-            return;
-        }
-
-        bookmark.Title = title;
         RefreshBookmarks();
         BookmarkNameBox.Clear();
         _saveState();
@@ -1336,7 +1952,12 @@ public partial class EmbeddedReaderControl : UserControl
         }
 
         var bookmark = _currentBookmarks[BookmarkList.SelectedIndex];
-        NavigateToChapter(bookmark.ChapterIndex, bookmark.ChapterProgress);
+        var resolvedAnchor = ResolveTextAnchor(CreateTextAnchor(bookmark), bookmark.ChapterIndex);
+        NavigateToChapter(
+            bookmark.ChapterIndex,
+            bookmark.ChapterProgress,
+            resolvedAnchor?.ParagraphIndex ?? -1,
+            resolvedAnchor?.CharacterIndex ?? -1);
         ClosePanels();
     }
 
@@ -1474,6 +2095,7 @@ public partial class EmbeddedReaderControl : UserControl
                 chapterIndex,
                 paragraphIndex,
                 characterIndex,
+                keyword,
                 $"第 {chapterNumber:00} 章 · {chapterTitle}",
                 BuildSearchPreview(text, characterIndex, keyword.Length)));
             searchStart = characterIndex + keyword.Length;
@@ -1525,18 +2147,22 @@ public partial class EmbeddedReaderControl : UserControl
 
     private static string BuildSearchPreview(string text, int characterIndex, int keywordLength)
     {
-        var compact = string.Join(
-            ' ',
-            text.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries));
-        if (compact.Length <= 72)
+        if (text.Length <= 72)
         {
-            return compact;
+            return NormalizeSearchPreviewText(text);
         }
 
-        var approximateIndex = Math.Min(characterIndex, compact.Length - 1);
-        var start = Math.Max(0, approximateIndex - 28);
-        var length = Math.Min(compact.Length - start, keywordLength + 56);
-        return $"{(start > 0 ? "…" : string.Empty)}{compact.Substring(start, length)}{(start + length < compact.Length ? "…" : string.Empty)}";
+        var start = Math.Max(0, characterIndex - 28);
+        var end = Math.Min(text.Length, characterIndex + keywordLength + 56);
+        var preview = NormalizeSearchPreviewText(text[start..end]);
+        return $"{(start > 0 ? "…" : string.Empty)}{preview}{(end < text.Length ? "…" : string.Empty)}";
+    }
+
+    private static string NormalizeSearchPreviewText(string text)
+    {
+        return string.Join(
+            ' ',
+            text.Split([' ', '\t', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries));
     }
 
     private void DecreaseFont_Click(object sender, RoutedEventArgs e)
@@ -1571,47 +2197,197 @@ public partial class EmbeddedReaderControl : UserControl
         SaveReaderPreferences();
     }
 
-    private void DecreaseContentWidth_Click(object sender, RoutedEventArgs e)
+    private void DecreasePageMargin_Click(object sender, RoutedEventArgs e)
     {
-        _contentWidthPercent = Math.Max(
-            MinContentWidthPercent,
-            _contentWidthPercent - ContentWidthPercentStep);
+        _pageMarginPixels = Math.Max(
+            MinPageMarginPixels,
+            _pageMarginPixels - PageMarginPixelsStep);
         UpdateSettingText();
         RebuildCurrentChapter(keepProgress: true);
         SaveReaderPreferences();
     }
 
-    private void IncreaseContentWidth_Click(object sender, RoutedEventArgs e)
+    private void IncreasePageMargin_Click(object sender, RoutedEventArgs e)
     {
-        _contentWidthPercent = Math.Min(
-            MaxContentWidthPercent,
-            _contentWidthPercent + ContentWidthPercentStep);
+        _pageMarginPixels = Math.Min(
+            MaxPageMarginPixels,
+            _pageMarginPixels + PageMarginPixelsStep);
         UpdateSettingText();
         RebuildCurrentChapter(keepProgress: true);
         SaveReaderPreferences();
     }
 
-    private void FontFamilyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void CommitFontFamily(FontFamily fontFamily)
     {
-        if (FontFamilyCombo.SelectedItem is not FontFamily fontFamily)
-        {
-            return;
-        }
-
+        var changed = !string.Equals(_readerFontFamily.Source, fontFamily.Source, StringComparison.OrdinalIgnoreCase);
         _readerFontFamily = fontFamily;
-        if (IsLoaded)
+        _suppressFontSearch = true;
+        FontFamilySearchBox.Text = fontFamily.Source;
+        FontFamilyList.ItemsSource = _fontFamilies;
+        FontFamilyList.SelectedItem = fontFamily;
+        _suppressFontSearch = false;
+        FontFamilyPopup.IsOpen = false;
+
+        if (changed && IsLoaded)
         {
             RebuildCurrentChapter(keepProgress: true);
         }
 
-        SaveReaderPreferences();
+        if (changed)
+        {
+            SaveReaderPreferences();
+        }
+    }
+
+    private void FontFamilySearchBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (!FontFamilyPopup.IsOpen)
+        {
+            OpenFontFamilyPopup(selectAll: true);
+        }
+    }
+
+    private void FontFamilySearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_suppressFontSearch || !FontFamilySearchBox.IsKeyboardFocusWithin)
+        {
+            return;
+        }
+
+        ApplyFontFamilyFilter(FontFamilySearchBox.Text);
+        FontFamilyPopup.IsOpen = true;
+    }
+
+    private void FontFamilySearchBox_PreviewKeyDown(object sender, WpfKeyEventArgs e)
+    {
+        if (e.Key is Key.Down or Key.Up)
+        {
+            if (!FontFamilyPopup.IsOpen)
+            {
+                OpenFontFamilyPopup(selectAll: false);
+            }
+
+            var itemCount = FontFamilyList.Items.Count;
+            if (itemCount > 0)
+            {
+                var nextIndex = FontFamilyList.SelectedIndex;
+                nextIndex = e.Key == Key.Down
+                    ? Math.Min(itemCount - 1, nextIndex + 1)
+                    : Math.Max(0, nextIndex < 0 ? 0 : nextIndex - 1);
+                FontFamilyList.SelectedIndex = nextIndex;
+                FontFamilyList.ScrollIntoView(FontFamilyList.SelectedItem);
+            }
+
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && FontFamilyPopup.IsOpen)
+        {
+            var selectedFont = FontFamilyList.SelectedItem as FontFamily
+                               ?? FontFamilyList.Items.Cast<FontFamily>().FirstOrDefault();
+            if (selectedFont is not null)
+            {
+                CommitFontFamily(selectedFont);
+            }
+
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && FontFamilyPopup.IsOpen)
+        {
+            FontFamilyPopup.IsOpen = false;
+            e.Handled = true;
+        }
+    }
+
+    private void ApplyFontFamilyFilter(string? keyword)
+    {
+        var normalizedKeyword = keyword?.Trim() ?? string.Empty;
+        FontFamilyList.ItemsSource = string.IsNullOrWhiteSpace(normalizedKeyword)
+            ? _fontFamilies
+            : _fontFamilies
+                .Where(fontFamily => fontFamily.Source.Contains(
+                    normalizedKeyword,
+                    StringComparison.CurrentCultureIgnoreCase))
+                .ToList();
+        FontFamilyList.SelectedIndex = -1;
+    }
+
+    private void OpenFontFamilyPopup(bool selectAll)
+    {
+        FontFamilyList.ItemsSource = _fontFamilies;
+        FontFamilyList.SelectedItem = _readerFontFamily;
+        FontFamilyPopup.IsOpen = true;
+        if (FontFamilyList.SelectedItem is not null)
+        {
+            FontFamilyList.ScrollIntoView(FontFamilyList.SelectedItem);
+        }
+
+        FontFamilySearchBox.Focus();
+        if (selectAll)
+        {
+            Dispatcher.BeginInvoke(
+                new Action(FontFamilySearchBox.SelectAll),
+                DispatcherPriority.Input);
+        }
+    }
+
+    private void ToggleFontFamilyPopup_Click(object sender, RoutedEventArgs e)
+    {
+        if (FontFamilyPopup.IsOpen)
+        {
+            FontFamilyPopup.IsOpen = false;
+            return;
+        }
+
+        OpenFontFamilyPopup(selectAll: true);
+    }
+
+    private void FontFamilyPopup_Closed(object? sender, EventArgs e)
+    {
+        _suppressFontSearch = true;
+        FontFamilySearchBox.Text = _readerFontFamily.Source;
+        FontFamilyList.ItemsSource = _fontFamilies;
+        FontFamilyList.SelectedItem = _readerFontFamily;
+        _suppressFontSearch = false;
+    }
+
+    private void FontFamilyList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (FindVisualAncestor<ListBoxItem>(e.OriginalSource as DependencyObject)?.DataContext is FontFamily fontFamily)
+        {
+            CommitFontFamily(fontFamily);
+            e.Handled = true;
+        }
+    }
+
+    private void FontFamilyList_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (ScrollFontFamilyList(e.Delta))
+        {
+            e.Handled = true;
+        }
+    }
+
+    private bool ScrollFontFamilyList(int delta)
+    {
+        if (FindVisualDescendant<ScrollViewer>(FontFamilyList) is not { } scrollViewer)
+        {
+            return false;
+        }
+
+        var targetOffset = Math.Clamp(
+            scrollViewer.VerticalOffset - delta * 0.4,
+            0,
+            scrollViewer.ScrollableHeight);
+        scrollViewer.ScrollToVerticalOffset(targetOffset);
+
+        return true;
     }
 
     private void UpdateSettingText()
     {
         FontSizeText.Text = $"{_fontSize:0} px";
         LineHeightText.Text = $"{_lineHeight:0.00}";
-        ContentWidthText.Text = $"{_contentWidthPercent:0}%";
+        ContentWidthText.Text = $"{_pageMarginPixels:0} px";
         AutoPageIntervalText.Text = $"{_autoPageIntervalSeconds:0.#} 秒";
     }
 
@@ -1657,10 +2433,20 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void SetImmersiveMode(bool enabled, bool save = true)
     {
+        var position = CaptureReadingPosition();
         _immersiveMode = enabled;
         _immersiveHideTimer.Stop();
+        if (_readingMode == ReadingMode.Page)
+        {
+            _pendingReflowChapterIndex = position.ChapterIndex;
+            _pendingReflowTextAnchor = position.TextAnchor;
+            _pendingReflowAnchor = position.PageAnchor;
+            _pendingReflowProgress = position.ChapterProgress;
+        }
+
         SetChromeVisible(!enabled);
         UpdateImmersiveModeControls();
+        RestoreReadingPositionAfterLayout(position, forcePageReflow: true);
         if (save)
         {
             SaveReaderPreferences();
@@ -1673,6 +2459,10 @@ public partial class EmbeddedReaderControl : UserControl
         ImmersiveModeButton.Tag = _immersiveMode ? "退出专注" : "专注模式";
         ImmersiveModeButton.ToolTip = _immersiveMode ? "退出专注模式" : "开启专注模式";
         ImmersiveModeIcon.Text = _immersiveMode ? "◱" : "⛶";
+        ImmersiveMaximizeButton.Visibility = _immersiveMode
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        UpdateWindowActionVisuals();
         ImmersiveCloseButton.Visibility = _immersiveMode
             ? Visibility.Visible
             : Visibility.Collapsed;
@@ -1729,7 +2519,36 @@ public partial class EmbeddedReaderControl : UserControl
 
         var horizontalInset = _isChromeVisible ? ReaderHorizontalInset : ImmersiveHorizontalInset;
         var availableWidth = Math.Max(320, ReaderBody.ActualWidth - horizontalInset * 2);
-        return availableWidth * (_contentWidthPercent / 100);
+        var effectivePageMargin = Math.Min(_pageMarginPixels, Math.Max(0, (availableWidth - 320) / 2));
+        return Math.Max(320, availableWidth - effectivePageMargin * 2);
+    }
+
+    private bool ShouldUseTwoColumnLayout(double contentWidth)
+    {
+        var singleColumnWidth = (contentWidth - TwoColumnGap) / 2;
+        var contentWidthThreshold = _isTwoColumnLayoutActive
+            ? TwoColumnDisableContentWidth
+            : TwoColumnEnableContentWidth;
+
+        _isTwoColumnLayoutActive = _readingMode == ReadingMode.Page
+                                   && contentWidth >= contentWidthThreshold
+                                   && singleColumnWidth >= MinTwoColumnSingleColumnWidth;
+
+        return _isTwoColumnLayoutActive;
+    }
+
+    private static double ConvertContentWidthPercentToPageMarginPixels(double contentWidthPercent)
+    {
+        var normalizedPercent = Math.Clamp(contentWidthPercent, MinContentWidthPercent, MaxContentWidthPercent);
+        return FallbackContentWidth * (100 - normalizedPercent) / 200;
+    }
+
+    private static double ConvertPageMarginPixelsToContentWidthPercent(double pageMarginPixels)
+    {
+        return Math.Clamp(
+            100 - pageMarginPixels * 200 / FallbackContentWidth,
+            MinContentWidthPercent,
+            MaxContentWidthPercent);
     }
 
     private void SetWhiteTheme_Click(object sender, RoutedEventArgs e) => ApplyTheme("white");
@@ -1737,6 +2556,31 @@ public partial class EmbeddedReaderControl : UserControl
     private void SetEyeTheme_Click(object sender, RoutedEventArgs e) => ApplyTheme("eye");
 
     private void SetNightTheme_Click(object sender, RoutedEventArgs e) => ApplyTheme("night");
+
+    private void SelectReaderBackgroundColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (TrySelectColor(_customReaderBackgroundColor, out var color))
+        {
+            _customReaderBackgroundColor = color;
+            ApplyTheme("custom");
+        }
+    }
+
+    private void SelectReaderTextColor_Click(object sender, RoutedEventArgs e)
+    {
+        if (TrySelectColor(_customReaderTextColor, out var color))
+        {
+            _customReaderTextColor = color;
+            ApplyTheme("custom");
+        }
+    }
+
+    private void ResetReaderColors_Click(object sender, RoutedEventArgs e)
+    {
+        _customReaderBackgroundColor = "#F7FAFC";
+        _customReaderTextColor = "#3F4B52";
+        ApplyTheme("white");
+    }
 
     private void ApplyTheme(string theme, bool save = true)
     {
@@ -1747,6 +2591,10 @@ public partial class EmbeddedReaderControl : UserControl
 
         switch (theme)
         {
+            case "custom":
+                ReaderRoot.Background = GetReaderBackgroundBrush();
+                ReaderBody.Background = GetReaderBackgroundBrush();
+                break;
             case "eye":
                 SetBrush("MainBackgroundBrush", "#FBFCF5");
                 SetBrush("ReaderBackgroundBrush", "#F5F6ED");
@@ -1824,6 +2672,9 @@ public partial class EmbeddedReaderControl : UserControl
                 break;
         }
 
+        ApplyReaderSurfaceColors();
+        UpdateCustomColorSwatches();
+
         if (IsLoaded)
         {
             RebuildCurrentChapter(keepProgress: true);
@@ -1832,6 +2683,93 @@ public partial class EmbeddedReaderControl : UserControl
         if (save)
         {
             SaveReaderPreferences();
+        }
+    }
+
+    private void ApplyReaderSurfaceColors()
+    {
+        var background = GetReaderBackgroundBrush();
+        ReaderRoot.Background = background;
+        ReaderBody.Background = background;
+    }
+
+    private void UpdateCustomColorSwatches()
+    {
+        if (CustomBackgroundSwatch is not null)
+        {
+            CustomBackgroundSwatch.Background = GetReaderBackgroundBrush();
+        }
+
+        if (CustomTextSwatch is not null)
+        {
+            CustomTextSwatch.Background = GetReaderTextBrush();
+        }
+    }
+
+    private Brush GetReaderBackgroundBrush()
+    {
+        return string.Equals(_theme, "custom", StringComparison.Ordinal)
+            ? CreateBrush(_customReaderBackgroundColor, "#F7FAFC")
+            : GetBrush("ReaderBackgroundBrush", "#F7FAFC");
+    }
+
+    private Brush GetReaderTextBrush()
+    {
+        return string.Equals(_theme, "custom", StringComparison.Ordinal)
+            ? CreateBrush(_customReaderTextColor, "#3F4B52")
+            : GetBrush("PrimaryTextBrush", "#3F4B52");
+    }
+
+    private static bool TrySelectColor(string currentColor, out string color)
+    {
+        color = currentColor;
+        using var dialog = new Forms.ColorDialog
+        {
+            FullOpen = true,
+            Color = ToDrawingColor(currentColor, "#F7FAFC")
+        };
+
+        if (dialog.ShowDialog() != Forms.DialogResult.OK)
+        {
+            return false;
+        }
+
+        color = $"#{dialog.Color.R:X2}{dialog.Color.G:X2}{dialog.Color.B:X2}";
+        return true;
+    }
+
+    private static System.Drawing.Color ToDrawingColor(string color, string fallback)
+    {
+        var wpfColor = (Color)ColorConverter.ConvertFromString(NormalizeColorOrDefault(color, fallback));
+        return System.Drawing.Color.FromArgb(wpfColor.R, wpfColor.G, wpfColor.B);
+    }
+
+    private static Brush CreateBrush(string color, string fallback)
+    {
+        return new SolidColorBrush((Color)ColorConverter.ConvertFromString(NormalizeColorOrDefault(color, fallback)));
+    }
+
+    private static string NormalizeColorOrDefault(string? color, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(color))
+        {
+            return fallback;
+        }
+
+        var value = color.Trim();
+        if (!value.StartsWith('#'))
+        {
+            value = "#" + value;
+        }
+
+        try
+        {
+            _ = (Color)ColorConverter.ConvertFromString(value);
+            return value.Length == 7 ? value.ToUpperInvariant() : fallback;
+        }
+        catch
+        {
+            return fallback;
         }
     }
 
@@ -1855,6 +2793,12 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void ReaderScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (IsFontFamilyPopupWheelEvent(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         if (TocPanel.IsMouseOver
             || BookmarkPanel.IsMouseOver
             || SettingsPanel.IsMouseOver
@@ -1884,9 +2828,28 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void ReaderSettingsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
+        if (IsFontFamilyPopupWheelEvent(e))
+        {
+            e.Handled = true;
+            return;
+        }
+
         ReaderSettingsScrollViewer.ScrollToVerticalOffset(
             ReaderSettingsScrollViewer.VerticalOffset - e.Delta * 0.55);
         e.Handled = true;
+    }
+
+    private bool IsFontFamilyPopupWheelEvent(MouseWheelEventArgs e)
+    {
+        if (!FontFamilyPopup.IsOpen)
+        {
+            return false;
+        }
+
+        return ReferenceEquals(
+                   FindVisualAncestor<ListBox>(e.OriginalSource as DependencyObject),
+                   FontFamilyList)
+               || FontFamilyList.IsMouseOver;
     }
 
     private void ReaderScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
@@ -2017,7 +2980,16 @@ public partial class EmbeddedReaderControl : UserControl
         ApplyContentWidth();
         if (_readingMode == ReadingMode.Page && IsLoaded)
         {
-            _pendingPageAnchor = CaptureCurrentPageAnchor();
+            if (_isPagePaginationPending)
+            {
+                return;
+            }
+
+            var position = CaptureReadingPosition();
+            _pendingReflowChapterIndex = _chapterIndex;
+            _pendingReflowTextAnchor ??= position.TextAnchor;
+            _pendingReflowAnchor ??= position.PageAnchor;
+            _pendingReflowProgress = position.ChapterProgress;
             _pageReflowTimer.Stop();
             _pageReflowTimer.Start();
             return;
@@ -2031,18 +3003,38 @@ public partial class EmbeddedReaderControl : UserControl
         _pageReflowTimer.Stop();
         if (_readingMode != ReadingMode.Page || _document.ChapterCount == 0)
         {
-            _pendingPageAnchor = null;
+            _pendingReflowAnchor = null;
+            _pendingReflowTextAnchor = null;
+            _pendingReflowProgress = null;
+            _pendingReflowChapterIndex = null;
             return;
         }
 
-        var anchor = _pendingPageAnchor;
-        var progress = anchor is null ? GetChapterProgress() : 0;
-        _pendingPageAnchor = null;
+        if (_isPagePaginationPending)
+        {
+            _pageReflowTimer.Start();
+            return;
+        }
+
+        var progress = _pendingReflowProgress ?? GetChapterProgress();
+        var anchor = _pendingReflowAnchor;
+        var textAnchor = _pendingReflowTextAnchor;
+        var chapterIndex = _pendingReflowChapterIndex ?? _chapterIndex;
+        _pendingReflowAnchor = null;
+        _pendingReflowTextAnchor = null;
+        _pendingReflowProgress = null;
+        _pendingReflowChapterIndex = null;
+        if (chapterIndex != _chapterIndex)
+        {
+            return;
+        }
+
+        var resolvedAnchor = ResolveTextAnchor(textAnchor) ?? anchor;
         RenderChapter(
             _document.Chapters[_chapterIndex],
             progress,
-            anchor?.ParagraphIndex ?? -1,
-            anchor?.CharacterIndex ?? -1);
+            resolvedAnchor?.ParagraphIndex ?? -1,
+            resolvedAnchor?.CharacterIndex ?? -1);
         UpdateProgress();
     }
 
@@ -2088,6 +3080,62 @@ public partial class EmbeddedReaderControl : UserControl
                || BookmarkPanel.Visibility == Visibility.Visible
                || SettingsPanel.Visibility == Visibility.Visible
                || SearchPanel.Visibility == Visibility.Visible;
+    }
+
+    private void SearchPanelHeader_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _isDraggingSearchPanel = true;
+        _searchPanelDragStart = e.GetPosition(ReaderRoot);
+        _searchPanelTranslateStart = new Point(SearchPanelTranslate.X, SearchPanelTranslate.Y);
+        SearchPanelHeader.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void SearchPanelHeader_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_isDraggingSearchPanel || e.LeftButton != MouseButtonState.Pressed)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(ReaderRoot);
+        SearchPanelTranslate.X = _searchPanelTranslateStart.X + position.X - _searchPanelDragStart.X;
+        SearchPanelTranslate.Y = _searchPanelTranslateStart.Y + position.Y - _searchPanelDragStart.Y;
+        ClampSearchPanelPosition();
+        e.Handled = true;
+    }
+
+    private void SearchPanelHeader_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (!_isDraggingSearchPanel)
+        {
+            return;
+        }
+
+        _isDraggingSearchPanel = false;
+        SearchPanelHeader.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    private void ClampSearchPanelPosition()
+    {
+        var panelWidth = SearchPanel.ActualWidth > 0 ? SearchPanel.ActualWidth : SearchPanel.Width;
+        var panelHeight = SearchPanel.ActualHeight > 0 ? SearchPanel.ActualHeight : SearchPanel.Height;
+        var rootWidth = Math.Max(1, ReaderRoot.ActualWidth);
+        var rootHeight = Math.Max(1, ReaderRoot.ActualHeight);
+        var margin = SearchPanel.Margin;
+        var baseLeft = rootWidth - panelWidth - margin.Right;
+        var baseTop = margin.Top;
+        const double visiblePadding = 16;
+
+        SearchPanelTranslate.X = Math.Clamp(
+            SearchPanelTranslate.X,
+            visiblePadding - baseLeft,
+            rootWidth - visiblePadding - panelWidth - baseLeft);
+        SearchPanelTranslate.Y = Math.Clamp(
+            SearchPanelTranslate.Y,
+            visiblePadding - baseTop,
+            rootHeight - visiblePadding - panelHeight - baseTop);
     }
 
     private void SetChromeVisible(bool visible)
@@ -2289,6 +3337,17 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void Reader_PreviewKeyDown(object sender, WpfKeyEventArgs e)
     {
+        if (ReaderImagePreviewOverlay.Visibility == Visibility.Visible)
+        {
+            if (e.Key == Key.Escape)
+            {
+                CloseReaderImagePreview();
+            }
+
+            e.Handled = true;
+            return;
+        }
+
         if (SettingsPanel.Visibility == Visibility.Visible && IsAltKey(e))
         {
             Keyboard.ClearFocus();
@@ -2296,9 +3355,65 @@ public partial class EmbeddedReaderControl : UserControl
             return;
         }
 
+        var isTextEditing = IsTextEditingElement(e.OriginalSource as DependencyObject);
+        if (isTextEditing && e.Key != Key.Escape)
+        {
+            return;
+        }
+
         if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.F)
         {
             ToggleSearch_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (MatchesShortcut(ReaderShortcutAction.ToggleBookmarks, e))
+        {
+            ToggleBookmarks_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (MatchesShortcut(ReaderShortcutAction.AddBookmark, e))
+        {
+            AddBookmark_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (MatchesShortcut(ReaderShortcutAction.ToggleImmersiveMode, e))
+        {
+            ToggleImmersiveMode_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (MatchesShortcut(ReaderShortcutAction.ToggleImmersiveMaximize, e) && _immersiveMode)
+        {
+            ImmersiveMaximize_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (HasModifiers(ModifierKeys.Control) && e.Key == Key.Left && !IsTextEditingElement(e.OriginalSource as DependencyObject))
+        {
+            PreviousChapter();
+            e.Handled = true;
+        }
+        else if (HasModifiers(ModifierKeys.Control) && e.Key == Key.Right && !IsTextEditingElement(e.OriginalSource as DependencyObject))
+        {
+            NextChapter();
+            e.Handled = true;
+        }
+        else if (MatchesShortcut(ReaderShortcutAction.BackToShelf, e) && !IsTextEditingElement(e.OriginalSource as DependencyObject))
+        {
+            BackToShelf_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (HasNoModifiers() && e.Key == Key.Delete && BookmarkPanel.Visibility == Visibility.Visible && !IsTextEditingElement(e.OriginalSource as DependencyObject))
+        {
+            DeleteBookmark_Click(this, new RoutedEventArgs());
+            e.Handled = true;
+        }
+        else if (HasNoModifiers() && e.Key == Key.Home && !AnyPanelOpen() && !IsTextEditingElement(e.OriginalSource as DependencyObject))
+        {
+            JumpToChapterBoundary(toEnd: false);
+            e.Handled = true;
+        }
+        else if (HasNoModifiers() && e.Key == Key.End && !AnyPanelOpen() && !IsTextEditingElement(e.OriginalSource as DependencyObject))
+        {
+            JumpToChapterBoundary(toEnd: true);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
@@ -2337,6 +3452,29 @@ public partial class EmbeddedReaderControl : UserControl
         }
     }
 
+    private void JumpToChapterBoundary(bool toEnd)
+    {
+        if (_document.ChapterCount == 0)
+        {
+            return;
+        }
+
+        if (_readingMode == ReadingMode.Page)
+        {
+            if (_isPagePaginationPending)
+            {
+                return;
+            }
+
+            _pendingRestorePageAnchor = null;
+            _pendingPageProgress = null;
+            ShowPage(toEnd ? Math.Max(0, _pageCount - 1) : 0, animateDirection: 0);
+            return;
+        }
+
+        ScrollToChapterProgress(toEnd ? 1 : 0);
+    }
+
     private void Reader_PreviewKeyUp(object sender, WpfKeyEventArgs e)
     {
         if (SettingsPanel.Visibility == Visibility.Visible && IsAltKey(e))
@@ -2349,6 +3487,23 @@ public partial class EmbeddedReaderControl : UserControl
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
         return key is Key.LeftAlt or Key.RightAlt;
+    }
+
+    private static bool HasNoModifiers()
+    {
+        return Keyboard.Modifiers == ModifierKeys.None;
+    }
+
+    private static bool HasModifiers(ModifierKeys modifiers)
+    {
+        return Keyboard.Modifiers == modifiers;
+    }
+
+    private bool MatchesShortcut(ReaderShortcutAction action, WpfKeyEventArgs e)
+    {
+        _state.ShortcutPreferences ??= new ReaderShortcutPreferences();
+        var shortcut = _state.ShortcutPreferences.GetShortcut(action);
+        return ShortcutGesture.TryParse(shortcut, out var gesture) && gesture.Matches(e);
     }
 
     private void BackToShelf_Click(object sender, RoutedEventArgs e)
@@ -2365,13 +3520,44 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void Maximize_Click(object sender, RoutedEventArgs e)
     {
-        var window = Window.GetWindow(this);
+        ToggleHostWindowState();
+    }
+
+    private void ImmersiveMaximize_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleHostWindowState();
+    }
+
+    private void ToggleHostWindowState()
+    {
+        var window = GetHostWindow();
         if (window is null)
         {
             return;
         }
 
-        window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        window.WindowState = window.WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+        UpdateWindowActionVisuals();
+    }
+
+    private Window? GetHostWindow() => _hostWindow ?? Window.GetWindow(this);
+
+    private void UpdateWindowActionVisuals()
+    {
+        var isMaximized = GetHostWindow()?.WindowState == WindowState.Maximized;
+        var windowActionTooltip = isMaximized ? "恢复" : "最大化";
+        var windowActionIcon = isMaximized ? "\uE923" : "\uE922";
+
+        ReaderMaximizeButton.ToolTip = windowActionTooltip;
+        ReaderMaximizeIcon.Text = windowActionIcon;
+        FloatingMaximizeButton.ToolTip = windowActionTooltip;
+        FloatingMaximizeIcon.Text = windowActionIcon;
+
+        ImmersiveMaximizeButton.Tag = isMaximized ? "取消全屏" : "全屏窗口";
+        ImmersiveMaximizeButton.ToolTip = isMaximized ? "取消全屏（恢复窗口大小）" : "全屏窗口（最大化）";
+        ImmersiveMaximizeIcon.Text = isMaximized ? "\uE923" : "\uE740";
     }
 
     private void CloseApp_Click(object sender, RoutedEventArgs e)
@@ -2391,10 +3577,10 @@ public partial class EmbeddedReaderControl : UserControl
             return;
         }
 
-        var window = Window.GetWindow(this);
+        var window = GetHostWindow();
         if (e.ClickCount == 2 && window is not null)
         {
-            window.WindowState = window.WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+            ToggleHostWindowState();
             return;
         }
 
@@ -2440,6 +3626,66 @@ public partial class EmbeddedReaderControl : UserControl
         }
 
         return false;
+    }
+
+    private static bool IsTextEditingElement(DependencyObject? source)
+    {
+        while (source is not null)
+        {
+            if (source is TextBoxBase or PasswordBox)
+            {
+                return true;
+            }
+
+            if (source is ComboBox { IsEditable: true })
+            {
+                return true;
+            }
+
+            source = source is FrameworkContentElement contentElement
+                ? contentElement.Parent
+                : VisualTreeHelper.GetParent(source);
+        }
+
+        return false;
+    }
+
+    private static T? FindVisualAncestor<T>(DependencyObject? source)
+        where T : DependencyObject
+    {
+        while (source is not null)
+        {
+            if (source is T match)
+            {
+                return match;
+            }
+
+            source = source is FrameworkContentElement contentElement
+                ? contentElement.Parent
+                : VisualTreeHelper.GetParent(source);
+        }
+
+        return null;
+    }
+
+    private static T? FindVisualDescendant<T>(DependencyObject source)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(source); index++)
+        {
+            var child = VisualTreeHelper.GetChild(source, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            if (FindVisualDescendant<T>(child) is { } descendant)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
     }
 
     private static Brush GetBrush(string resourceKey, string fallbackColor)

@@ -16,6 +16,7 @@
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Background" Value="#F2F7FA" />
             <Setter Property="Foreground" Value="#3F4B52" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
@@ -40,7 +41,8 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="#FFFFFF"
+    <Border x:Name="DialogRoot"
+            Background="#FFFFFF"
             BorderBrush="#E5EEF3"
             BorderThickness="1"
             CornerRadius="16">
@@ -97,6 +99,7 @@
                                 <Setter Property="Margin" Value="0,0,0,8" />
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                                 <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="FocusVisualStyle" Value="{x:Null}" />
                             </Style>
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>

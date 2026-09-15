@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>SeaS_Setup</AssemblyName>
+    <RootNamespace>SeaS.Installer</RootNamespace>
+    <Product>SeaS 安装程序</Product>
+    <AssemblyTitle>SeaS 安装程序</AssemblyTitle>
+    <ApplicationIcon>..\SeaS.App\Assets\seas.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\SeaS.App\Assets\seas.png" Link="Assets\seas.png" />
+    <Resource Include="Assets\payload.zip" Condition="Exists('Assets\payload.zip')" />
+    <Resource Include="Assets\payload.sha256" Condition="Exists('Assets\payload.sha256')" />
+  </ItemGroup>
+
+</Project>

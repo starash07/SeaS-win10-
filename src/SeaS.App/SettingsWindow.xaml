@@ -1,0 +1,261 @@
+<Window x:Class="SeaS.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="设置"
+        Width="620"
+        Height="410"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Icon="Assets/seas.png"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        UseLayoutRounding="True"
+        PreviewKeyDown="Window_PreviewKeyDown">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="0"
+                      ResizeBorderThickness="0"
+                      CornerRadius="10"
+                      GlassFrameThickness="0" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <Style x:Key="SettingsNavButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="40" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Padding="{TemplateBinding Padding}"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="7">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Active">
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ShortcutEditButtonStyle" TargetType="Button" BasedOn="{StaticResource DialogSecondaryButtonStyle}">
+            <Setter Property="MinWidth" Value="128" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentDarkBrush}" />
+            <Style.Triggers>
+                <Trigger Property="Tag" Value="Capturing">
+                    <Setter Property="Background" Value="#E7F6DE" />
+                    <Setter Property="Foreground" Value="{DynamicResource LimeDarkBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="DialogRoot"
+            Background="{DynamicResource MainBackgroundBrush}"
+            BorderBrush="{DynamicResource LineBrush}"
+            BorderThickness="1"
+            CornerRadius="10"
+            ClipToBounds="True">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="66" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0"
+                  MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <TextBlock Margin="26,0,0,0"
+                           VerticalAlignment="Center"
+                           Foreground="{DynamicResource PrimaryTextBrush}"
+                           FontSize="17"
+                           FontWeight="SemiBold"
+                           Text="设置" />
+                <Button Width="34"
+                        Height="34"
+                        Margin="0,7,12,0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource IconButtonStyle}"
+                        ToolTip="关闭"
+                        Click="CloseButton_Click">
+                    <TextBlock FontFamily="Segoe MDL2 Assets"
+                               FontSize="10"
+                               Text="&#xE711;" />
+                </Button>
+            </Grid>
+
+            <Grid Grid.Row="1"
+                  Margin="26,10,26,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="132" />
+                    <ColumnDefinition Width="28" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <Button x:Name="ShortcutsTabButton"
+                            Style="{StaticResource SettingsNavButtonStyle}"
+                            Content="快捷键"
+                            Click="SelectShortcuts_Click" />
+                    <Button x:Name="AboutTabButton"
+                            Margin="0,6,0,0"
+                            Style="{StaticResource SettingsNavButtonStyle}"
+                            Content="关于"
+                            Click="SelectAbout_Click" />
+                </StackPanel>
+
+                <Grid Grid.Column="2">
+                    <Grid x:Name="ShortcutsPage">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0"
+                                Background="{DynamicResource CardBrush}"
+                                CornerRadius="8">
+                            <Grid Margin="14,10">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="30" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="150" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock VerticalAlignment="Center"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Text="功能" />
+                                    <TextBlock Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource PrimaryTextBrush}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Text="快捷键" />
+                                </Grid>
+
+                                <ItemsControl x:Name="ShortcutItemsControl"
+                                              Grid.Row="1"
+                                              ItemsSource="{Binding ShortcutItems}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid MinHeight="42">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="150" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock VerticalAlignment="Center"
+                                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                                           FontSize="13"
+                                                           Text="{Binding FunctionName}" />
+                                                <Button Grid.Column="1"
+                                                        Margin="0,0,3,0"
+                                                        HorizontalAlignment="Stretch"
+                                                        Style="{StaticResource ShortcutEditButtonStyle}"
+                                                        Content="{Binding DisplayShortcut}"
+                                                        Tag="{Binding CaptureTag}"
+                                                        Click="ShortcutButton_Click" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </Border>
+
+                        <TextBlock x:Name="ShortcutHintText"
+                                   Grid.Row="1"
+                                   Margin="2,10,0,0"
+                                   Foreground="#D45B64"
+                                   FontSize="11.5" />
+                    </Grid>
+
+                    <Grid x:Name="AboutPage"
+                          Visibility="Collapsed">
+                        <StackPanel VerticalAlignment="Top">
+                            <TextBlock Foreground="{DynamicResource PrimaryTextBrush}"
+                                       FontSize="18"
+                                       FontWeight="SemiBold"
+                                       Text="SeaS" />
+                            <Grid Margin="0,26,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="72" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="32" />
+                                    <RowDefinition Height="32" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Foreground="{DynamicResource SecondaryTextBrush}"
+                                           FontSize="12"
+                                           Text="版本号" />
+                                <TextBlock Grid.Column="1"
+                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                           FontSize="13"
+                                           Text="{Binding VersionText}" />
+                                <TextBlock Grid.Row="1"
+                                           Foreground="{DynamicResource SecondaryTextBrush}"
+                                           FontSize="12"
+                                           Text="作者" />
+                                <TextBlock Grid.Row="1"
+                                           Grid.Column="1"
+                                           Foreground="{DynamicResource PrimaryTextBrush}"
+                                           FontSize="13"
+                                           Text="星尘与凌" />
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <StackPanel Grid.Row="2"
+                        Margin="0,0,26,24"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Bottom"
+                        Orientation="Horizontal">
+                <Button x:Name="ResetShortcutsButton"
+                        Width="92"
+                        Margin="0,0,10,0"
+                        Style="{StaticResource DialogSecondaryButtonStyle}"
+                        Content="恢复默认"
+                        Click="ResetShortcuts_Click" />
+                <Button Width="86"
+                        Margin="0,0,10,0"
+                        Style="{StaticResource DialogSecondaryButtonStyle}"
+                        Content="取消"
+                        IsCancel="True" />
+                <Button Width="86"
+                        Style="{StaticResource DialogPrimaryButtonStyle}"
+                        Content="保存"
+                        IsDefault="True"
+                        Click="Save_Click" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

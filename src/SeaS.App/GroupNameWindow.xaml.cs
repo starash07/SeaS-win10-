@@ -12,6 +12,7 @@ public partial class GroupNameWindow : Window
     public GroupNameWindow(string title, IEnumerable<string> existingNames)
     {
         InitializeComponent();
+        DialogMotion.EnablePop(DialogRoot);
         DialogTitle.Text = title;
         _existingNames = existingNames
             .Where(name => !string.IsNullOrWhiteSpace(name))

@@ -7,6 +7,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{055AE748-33E
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeaS.App", "src\SeaS.App\SeaS.App.csproj", "{D5BF6346-8A9A-49C7-91D8-73FEE742D09C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeaS.Installer", "src\SeaS.Installer\SeaS.Installer.csproj", "{F3F647F7-91C3-49C3-A7E8-40418EAEF601}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SeaS.Uninstaller", "src\SeaS.Uninstaller\SeaS.Uninstaller.csproj", "{797D6CBB-BC2F-4208-B331-B43DEA651895}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,8 +24,18 @@ Global
 		{D5BF6346-8A9A-49C7-91D8-73FEE742D09C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D5BF6346-8A9A-49C7-91D8-73FEE742D09C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D5BF6346-8A9A-49C7-91D8-73FEE742D09C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3F647F7-91C3-49C3-A7E8-40418EAEF601}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3F647F7-91C3-49C3-A7E8-40418EAEF601}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3F647F7-91C3-49C3-A7E8-40418EAEF601}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3F647F7-91C3-49C3-A7E8-40418EAEF601}.Release|Any CPU.Build.0 = Release|Any CPU
+		{797D6CBB-BC2F-4208-B331-B43DEA651895}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{797D6CBB-BC2F-4208-B331-B43DEA651895}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{797D6CBB-BC2F-4208-B331-B43DEA651895}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{797D6CBB-BC2F-4208-B331-B43DEA651895}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{D5BF6346-8A9A-49C7-91D8-73FEE742D09C} = {055AE748-33EB-4FB1-BA65-A0D9157F91C1}
+		{F3F647F7-91C3-49C3-A7E8-40418EAEF601} = {055AE748-33EB-4FB1-BA65-A0D9157F91C1}
+		{797D6CBB-BC2F-4208-B331-B43DEA651895} = {055AE748-33EB-4FB1-BA65-A0D9157F91C1}
 	EndGlobalSection
 EndGlobal

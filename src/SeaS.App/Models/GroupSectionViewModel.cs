@@ -7,6 +7,7 @@ public sealed class GroupSectionViewModel : INotifyPropertyChanged
 {
     private string _name = string.Empty;
     private bool _isEditing;
+    private bool _isDragOver;
 
     public Guid? GroupId { get; init; }
 
@@ -40,6 +41,21 @@ public sealed class GroupSectionViewModel : INotifyPropertyChanged
 
             _isEditing = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsEditing)));
+        }
+    }
+
+    public bool IsDragOver
+    {
+        get => _isDragOver;
+        set
+        {
+            if (_isDragOver == value)
+            {
+                return;
+            }
+
+            _isDragOver = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDragOver)));
         }
     }
 
