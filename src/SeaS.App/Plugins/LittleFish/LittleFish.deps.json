@@ -1,12 +1,13 @@
 {
   "runtimeTarget": {
-    "name": ".NETCoreApp,Version=v8.0",
+    "name": ".NETCoreApp,Version=v8.0/win-x64",
     "signature": ""
   },
   "compilationOptions": {},
   "targets": {
-    ".NETCoreApp,Version=v8.0": {
-      "LittleFish/1.5.2": {
+    ".NETCoreApp,Version=v8.0": {},
+    ".NETCoreApp,Version=v8.0/win-x64": {
+      "LittleFish/1.6.0": {
         "dependencies": {
           "System.Text.Encoding.CodePages": "10.0.7",
           "UTF.Unknown": "2.7.0"
@@ -17,15 +18,7 @@
       },
       "System.Text.Encoding.CodePages/10.0.7": {
         "runtime": {
-          "lib/net8.0/System.Text.Encoding.CodePages.dll": {
-            "assemblyVersion": "10.0.0.0",
-            "fileVersion": "10.0.726.21808"
-          }
-        },
-        "runtimeTargets": {
           "runtimes/win/lib/net8.0/System.Text.Encoding.CodePages.dll": {
-            "rid": "win",
-            "assetType": "runtime",
             "assemblyVersion": "10.0.0.0",
             "fileVersion": "10.0.726.21808"
           }
@@ -42,7 +35,7 @@
     }
   },
   "libraries": {
-    "LittleFish/1.5.2": {
+    "LittleFish/1.6.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

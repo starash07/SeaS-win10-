@@ -2,7 +2,7 @@
 
 SeaS 是一款可以切换无痕摸鱼模式的 Windows 本地阅读器，支持书架管理和 TXT、EPUB、Markdown 格式。当前版本为 `V1.1.0`，使用 C#、WPF 与 .NET 8 开发。
 
-> 版本状态：`V1.1.0` 已完成当前源码的正式保护与安装包封装，`dist\setup` 只保留当前版本安装包。
+> 版本状态：2026-09-16 重新打包，版本保持 `V1.1.0`，内置 LittleFish 更新至 `1.6.0` 修复构建。
 
 本次更新内容与覆盖安装说明见 [UPDATE_README.md](UPDATE_README.md)。
 
@@ -35,7 +35,7 @@ SeaS 是一款可以切换无痕摸鱼模式的 Windows 本地阅读器，支持
 
 ### 摸鱼模式与 LittleFish
 
-- SeaS 内置 LittleFish `1.5.2`（2026-09-15 修复构建），仅用于 TXT 摸鱼阅读；运行组件包含新版文本编码识别依赖 `UTF.Unknown 2.7.0`。
+- SeaS 内置 LittleFish `1.6.0`（2026-09-16 修复构建），仅用于 TXT 摸鱼阅读；运行组件包含文本编码识别依赖 `UTF.Unknown 2.7.0`。
 - 始终从 `src/SeaS.App/Plugins/LittleFish` 随附的固定版本启动。
 - 不调用用户系统中单独安装的 LittleFish。
 - SeaS 托盘统一接管内置 LittleFish 的隐藏、恢复和退出流程。
@@ -241,7 +241,8 @@ dist\setup\
 ## V1.1.0 发布状态与后续事项
 
 - 根据 V1.0.0 安装后的实际使用反馈继续修复问题并优化体验。
-- `V1.1.0` 安装包已完成 Obfuscar 代码保护、受保护主程序/卸载器冒烟测试、安装器自检和 SHA-256 校验，并包含 2026-09-15 更新的内置 LittleFish 修复构建。
+- `V1.1.0` 安装包于 2026-09-16 重新生成，包含 LittleFish `1.6.0` 修复构建及正文拖动、默认不透明度修复；版本号保持不变。
+- 已完成 Obfuscar 代码保护、受保护主程序/卸载器冒烟测试和安装器自检。
 
 - 将 SeaS 托管模式下的 LittleFish 设置迁移到 `%LOCALAPPDATA%\SeaS\LittleFish`。
 - 在实际 UAC 环境中人工验收“为所有用户安装”。
