@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -31,7 +32,7 @@ public partial class EmbeddedReaderControl : UserControl
         string LocationText,
         string Preview);
     private sealed record PageAnchor(int ParagraphIndex, int CharacterIndex);
-    private sealed record PageRunSegment(int StartCharacter, int Length, Run Run);
+    private sealed record TextRunSegment(int StartCharacter, int Length, Run Run);
     private sealed record ScrollAnchor(int ParagraphIndex, int CharacterIndex, double OffsetIntoLine);
     private sealed record TextAnchor(
         int ParagraphIndex,
@@ -64,6 +65,7 @@ public partial class EmbeddedReaderControl : UserControl
     private const int TextAnchorBeforeChars = 24;
     private const int TextAnchorAfterChars = 72;
     private const int TextAnchorMinLength = 36;
+    private static readonly Thickness ReaderImageMargin = new(0, 8, 0, 28);
 
     private readonly BookItem _book;
     private readonly LibraryState _state;
@@ -90,7 +92,8 @@ public partial class EmbeddedReaderControl : UserControl
     private bool _autoPageEnabled;
     private double _autoPageIntervalSeconds = 5;
     private readonly Dictionary<Paragraph, int> _pageParagraphIndices = [];
-    private readonly Dictionary<int, List<PageRunSegment>> _pageRunSegments = [];
+    private readonly Dictionary<int, List<TextRunSegment>> _pageRunSegments = [];
+    private readonly Dictionary<int, List<TextRunSegment>> _scrollRunSegments = [];
     private readonly DispatcherTimer _pageReflowTimer;
     private FlowDocument? _pageDocument;
     private DynamicDocumentPaginator? _pagePaginator;
@@ -104,6 +107,8 @@ public partial class EmbeddedReaderControl : UserControl
     private int? _pendingReflowChapterIndex;
     private object? _pagePaginationUserState;
     private bool _isPagePaginationPending;
+    private bool _isReadingPositionRestoring = true;
+    private int _chapterRenderVersion;
     private bool _isTwoColumnLayoutActive;
     private bool _readerRailExpanded;
     private bool _isChromeVisible = true;
@@ -196,10 +201,6 @@ public partial class EmbeddedReaderControl : UserControl
         UpdateImmersiveModeControls();
         SetChromeVisible(!_immersiveMode);
         RefreshBookmarks();
-        NavigateToChapter(
-            _book.LastReadChapterIndex,
-            Math.Clamp(_book.LastReadChapterProgress, 0, 1));
-
         Loaded += ReaderControl_Loaded;
         Unloaded += ReaderControl_Unloaded;
     }
@@ -269,12 +270,9 @@ public partial class EmbeddedReaderControl : UserControl
         Focus();
         SetChromeVisible(!_immersiveMode);
         ConfigureAutoPageTimer();
-        if (_readingMode == ReadingMode.Page)
-        {
-            Dispatcher.BeginInvoke(
-                () => RebuildCurrentChapter(keepProgress: true),
-                DispatcherPriority.Loaded);
-        }
+        NavigateToChapter(
+            _book.LastReadChapterIndex,
+            Math.Clamp(_book.LastReadChapterProgress, 0, 1));
     }
 
     private void ReaderControl_Unloaded(object sender, RoutedEventArgs e)
@@ -368,14 +366,23 @@ public partial class EmbeddedReaderControl : UserControl
         ChapterList.SelectionChanged += ChapterList_SelectionChanged;
 
         RenderChapter(chapter, chapterProgress, paragraphIndex, characterIndex);
+        var renderVersion = _chapterRenderVersion;
 
         Dispatcher.BeginInvoke(() =>
         {
+            if (!IsLoaded || renderVersion != _chapterRenderVersion)
+            {
+                return;
+            }
+
             if (_readingMode == ReadingMode.Page)
             {
                 UpdateProgress();
+                return;
             }
-            else if (paragraphIndex >= 0)
+
+            ReaderScrollViewer.UpdateLayout();
+            if (paragraphIndex >= 0)
             {
                 ScrollToParagraph(paragraphIndex);
             }
@@ -384,6 +391,8 @@ public partial class EmbeddedReaderControl : UserControl
                 ScrollToChapterProgress(chapterProgress);
             }
 
+            ReaderScrollViewer.UpdateLayout();
+            _isReadingPositionRestoring = false;
             UpdateProgress();
         }, DispatcherPriority.Loaded);
     }
@@ -394,8 +403,11 @@ public partial class EmbeddedReaderControl : UserControl
         int paragraphIndex = -1,
         int characterIndex = -1)
     {
+        _chapterRenderVersion++;
+        _isReadingPositionRestoring = true;
         ApplyContentWidth();
         ArticlePanel.Children.Clear();
+        _scrollRunSegments.Clear();
         ArticlePanel.Margin = _readingMode == ReadingMode.Page
             ? new Thickness(0, 34, 0, 34)
             : new Thickness(0, 44, 0, 86);
@@ -434,7 +446,7 @@ public partial class EmbeddedReaderControl : UserControl
                 continue;
             }
 
-            ArticlePanel.Children.Add(CreateParagraphBlock(block.Text, textParagraphIndex));
+            ArticlePanel.Children.Add(CreateParagraphBlock(block, textParagraphIndex));
             textParagraphIndex++;
         }
     }
@@ -499,12 +511,16 @@ public partial class EmbeddedReaderControl : UserControl
         var columnWidth = useTwoColumns
             ? Math.Max(320, (contentWidth - columnGap) / 2)
             : double.PositiveInfinity;
+        var pagePadding = new Thickness(horizontalPadding, 34, horizontalPadding, 34);
+        var imageMaxWidth = Math.Min(840, useTwoColumns ? columnWidth : pageWidth - horizontalPadding * 2);
+        var imageMaxHeight = Math.Min(980,
+            pageHeight - pagePadding.Top - pagePadding.Bottom - ReaderImageMargin.Top - ReaderImageMargin.Bottom);
 
         _pageDocument = new FlowDocument
         {
             PageWidth = pageWidth,
             PageHeight = pageHeight,
-            PagePadding = new Thickness(horizontalPadding, 34, horizontalPadding, 34),
+            PagePadding = pagePadding,
             ColumnWidth = columnWidth,
             ColumnGap = columnGap,
             FontFamily = _readerFontFamily,
@@ -533,7 +549,7 @@ public partial class EmbeddedReaderControl : UserControl
             {
                 if (block.Kind == ReaderContentBlockKind.Image)
                 {
-                    if (CreatePagedImageBlock(block) is { } imageBlock)
+                    if (CreatePagedImageBlock(block, imageMaxWidth, imageMaxHeight) is { } imageBlock)
                     {
                         _pageDocument.Blocks.Add(imageBlock);
                     }
@@ -541,7 +557,7 @@ public partial class EmbeddedReaderControl : UserControl
                     continue;
                 }
 
-                _pageDocument.Blocks.Add(CreatePagedParagraph(block.Text, textParagraphIndex));
+                _pageDocument.Blocks.Add(CreatePagedParagraph(block, textParagraphIndex, imageMaxWidth, imageMaxHeight));
                 textParagraphIndex++;
             }
         }
@@ -552,12 +568,6 @@ public partial class EmbeddedReaderControl : UserControl
         _pagePaginator.PaginationCompleted += PagePaginator_PaginationCompleted;
         _pagePaginationUserState = new object();
         _isPagePaginationPending = true;
-
-        ReaderBody.Background = GetReaderBackgroundBrush();
-        ReaderPageView.DocumentPaginator = _pagePaginator;
-        ReaderPageView.PageNumber = 0;
-        _pageIndex = 0;
-        _pageCount = Math.Max(1, _pagePaginator.PageCount);
 
         if (paragraphIndex >= 0)
         {
@@ -572,6 +582,11 @@ public partial class EmbeddedReaderControl : UserControl
             _pendingPageProgress = Math.Clamp(chapterProgress, 0, 1);
         }
 
+        ReaderBody.Background = GetReaderBackgroundBrush();
+        ReaderPageView.DocumentPaginator = _pagePaginator;
+        ReaderPageView.PageNumber = 0;
+        _pageIndex = 0;
+        _pageCount = Math.Max(1, _pagePaginator.PageCount);
         _pagePaginator.ComputePageCountAsync(_pagePaginationUserState);
         UpdateProgress();
     }
@@ -641,7 +656,7 @@ public partial class EmbeddedReaderControl : UserControl
         };
     }
 
-    private Paragraph CreatePagedParagraph(string text, int paragraphIndex)
+    private Paragraph CreatePagedParagraph(ReaderContentBlock content, int paragraphIndex, double imageMaxWidth, double imageMaxHeight)
     {
         var paragraph = new Paragraph
         {
@@ -651,45 +666,83 @@ public partial class EmbeddedReaderControl : UserControl
             Foreground = GetReaderTextBrush(),
             LineHeight = _fontSize * _lineHeight,
             TextAlignment = TextAlignment.Justify,
-            TextIndent = _fontSize * 2,
+            TextIndent = content.Text.Length > 0 ? _fontSize * 2 : 0,
             KeepTogether = false,
             KeepWithNext = false
         };
 
         _pageParagraphIndices[paragraph] = paragraphIndex;
-        var segments = new List<PageRunSegment>();
+        var segments = new List<TextRunSegment>();
         _pageRunSegments[paragraphIndex] = segments;
-
-        var match = GetCurrentSearchMatch();
-        if (match is not null
-            && match.ChapterIndex == _chapterIndex
-            && match.ParagraphIndex == paragraphIndex
-            && !string.IsNullOrEmpty(_activeSearchKeyword)
-            && match.CharacterIndex >= 0
-            && match.CharacterIndex + _activeSearchKeyword.Length <= text.Length)
-        {
-            AddPagedRun(paragraph, segments, text, 0, match.CharacterIndex, false);
-            AddPagedRun(
-                paragraph,
-                segments,
-                text,
-                match.CharacterIndex,
-                _activeSearchKeyword.Length,
-                true);
-            var remainingStart = match.CharacterIndex + _activeSearchKeyword.Length;
-            AddPagedRun(paragraph, segments, text, remainingStart, text.Length - remainingStart, false);
-        }
-        else
-        {
-            AddPagedRun(paragraph, segments, text, 0, text.Length, false);
-        }
-
+        AddParagraphInlines(paragraph.Inlines, content, paragraphIndex, segments, imageMaxWidth, imageMaxHeight);
         return paragraph;
     }
 
-    private static void AddPagedRun(
-        Paragraph paragraph,
-        ICollection<PageRunSegment> segments,
+    private void AddParagraphInlines(
+        InlineCollection inlines,
+        ReaderContentBlock content,
+        int paragraphIndex,
+        List<TextRunSegment> segments,
+        double imageMaxWidth,
+        double imageMaxHeight)
+    {
+        var text = content.Text;
+        var match = GetCurrentSearchMatch();
+        var highlightStart = match is not null
+                             && match.ChapterIndex == _chapterIndex
+                             && match.ParagraphIndex == paragraphIndex
+                             && match.CharacterIndex >= 0
+                             && match.CharacterIndex + _activeSearchKeyword.Length <= text.Length
+            ? match.CharacterIndex
+            : -1;
+        var highlightEnd = highlightStart + _activeSearchKeyword.Length;
+
+        void AddText(int start, int end)
+        {
+            if (highlightStart < 0 || highlightStart >= end || highlightEnd <= start)
+            {
+                AddTextRun(inlines, segments, text, start, end - start, false);
+                return;
+            }
+
+            var markedStart = Math.Max(start, highlightStart);
+            var markedEnd = Math.Min(end, highlightEnd);
+            AddTextRun(inlines, segments, text, start, markedStart - start, false);
+            AddTextRun(inlines, segments, text, markedStart, markedEnd - markedStart, true);
+            AddTextRun(inlines, segments, text, markedEnd, end - markedEnd, false);
+        }
+
+        var textStart = 0;
+        foreach (var inlineImage in content.InlineImages)
+        {
+            var imageIndex = Math.Clamp(inlineImage.CharacterIndex, textStart, text.Length);
+            AddText(textStart, imageIndex);
+            if (CreateReaderImage(inlineImage.Image, imageMaxWidth, imageMaxHeight) is { } image)
+            {
+                inlines.Add(new InlineUIContainer(image)
+                {
+                    BaselineAlignment = inlineImage.Image.ImageVerticalAlignment?.ToLowerInvariant() switch
+                    {
+                        "super" => BaselineAlignment.Superscript,
+                        "sub" => BaselineAlignment.Subscript,
+                        "middle" => BaselineAlignment.Center,
+                        "top" => BaselineAlignment.Top,
+                        "text-top" => BaselineAlignment.TextTop,
+                        "bottom" => BaselineAlignment.Bottom,
+                        "text-bottom" => BaselineAlignment.TextBottom,
+                        _ => BaselineAlignment.Baseline
+                    }
+                });
+            }
+            textStart = imageIndex;
+        }
+
+        AddText(textStart, text.Length);
+    }
+
+    private static void AddTextRun(
+        InlineCollection inlines,
+        ICollection<TextRunSegment> segments,
         string source,
         int start,
         int length,
@@ -706,8 +759,8 @@ public partial class EmbeddedReaderControl : UserControl
             run.Background = GetBrush("LimeBrush", "#C4EAB5");
         }
 
-        paragraph.Inlines.Add(run);
-        segments.Add(new PageRunSegment(start, length, run));
+        inlines.Add(run);
+        segments.Add(new TextRunSegment(start, length, run));
     }
 
     private bool TryGetPageNumber(PageAnchor anchor, out int pageNumber)
@@ -746,14 +799,19 @@ public partial class EmbeddedReaderControl : UserControl
             return null;
         }
 
+        return GetRunTextPosition(segments, anchor.CharacterIndex) ?? paragraph.ContentStart;
+    }
+
+    private static TextPointer? GetRunTextPosition(IReadOnlyList<TextRunSegment> segments, int characterIndex)
+    {
         var sourceLength = segments.Count == 0
             ? 0
             : segments.Max(segment => segment.StartCharacter + segment.Length);
-        var characterIndex = Math.Clamp(anchor.CharacterIndex, 0, sourceLength);
+        characterIndex = Math.Clamp(characterIndex, 0, sourceLength);
         foreach (var segment in segments)
         {
             var segmentEnd = segment.StartCharacter + segment.Length;
-            if (characterIndex > segmentEnd)
+            if (characterIndex >= segmentEnd)
             {
                 continue;
             }
@@ -764,7 +822,7 @@ public partial class EmbeddedReaderControl : UserControl
                    ?? segment.Run.ContentEnd;
         }
 
-        return paragraph.ContentEnd;
+        return segments.LastOrDefault()?.Run.ContentEnd;
     }
 
     private ReadingPositionSnapshot CaptureReadingPosition()
@@ -1023,7 +1081,7 @@ public partial class EmbeddedReaderControl : UserControl
         return lastAnchor;
     }
 
-    private PageAnchor? FindFirstAnchorOnPage(int paragraphIndex, PageRunSegment segment, int targetPage)
+    private PageAnchor? FindFirstAnchorOnPage(int paragraphIndex, TextRunSegment segment, int targetPage)
     {
         var low = segment.StartCharacter;
         var high = segment.StartCharacter + Math.Max(0, segment.Length - 1);
@@ -1125,28 +1183,30 @@ public partial class EmbeddedReaderControl : UserControl
         }
 
         var paginator = _pagePaginator;
-        var anchor = _pendingRestorePageAnchor;
-        var progress = _pendingPageProgress;
-        _pendingRestorePageAnchor = null;
-        _pendingPageProgress = null;
         _pageCount = Math.Max(1, paginator.PageCount);
-        _isPagePaginationPending = false;
 
         Dispatcher.BeginInvoke(() =>
         {
-            if (!ReferenceEquals(paginator, _pagePaginator) || _readingMode != ReadingMode.Page)
+            if (!IsLoaded || !ReferenceEquals(paginator, _pagePaginator) || _readingMode != ReadingMode.Page)
             {
                 return;
             }
 
+            var anchor = _pendingRestorePageAnchor;
+            var progress = _pendingPageProgress;
+            _pendingRestorePageAnchor = null;
+            _pendingPageProgress = null;
+            _isPagePaginationPending = false;
+            _isReadingPositionRestoring = false;
             if (anchor is not null && TryGetPageNumber(anchor, out var targetPage))
             {
                 ShowPage(targetPage, animateDirection: 0);
             }
             else if (progress is not null)
             {
+                // Older library files round progress to six decimal places.
                 var progressPage = Math.Clamp(
-                    (int)Math.Floor(progress.Value * _pageCount),
+                    (int)Math.Floor((progress.Value + 0.0000005) * _pageCount),
                     0,
                     _pageCount - 1);
                 ShowPage(progressPage, animateDirection: 0);
@@ -1181,7 +1241,7 @@ public partial class EmbeddedReaderControl : UserControl
         _isPagePaginationPending = false;
     }
 
-    private TextBlock CreateParagraphBlock(string paragraph, int index, int sourceStart = 0)
+    private TextBlock CreateParagraphBlock(ReaderContentBlock content, int index)
     {
         var block = new TextBlock
         {
@@ -1195,39 +1255,14 @@ public partial class EmbeddedReaderControl : UserControl
             Tag = index
         };
 
-        if (sourceStart == 0)
+        if (content.Text.Length > 0)
         {
             block.Inlines.Add(new Run("\u3000\u3000"));
         }
 
-        if (GetCurrentSearchMatch() is { } match
-            && match.ChapterIndex == _chapterIndex
-            && match.ParagraphIndex == index
-            && !string.IsNullOrEmpty(_activeSearchKeyword)
-            && match.CharacterIndex >= sourceStart
-            && match.CharacterIndex + _activeSearchKeyword.Length <= sourceStart + paragraph.Length)
-        {
-            var localMatchIndex = match.CharacterIndex - sourceStart;
-            if (localMatchIndex > 0)
-            {
-                block.Inlines.Add(new Run(paragraph[..localMatchIndex]));
-            }
-
-            block.Inlines.Add(new Run(paragraph.Substring(localMatchIndex, _activeSearchKeyword.Length))
-            {
-                Background = GetBrush("LimeBrush", "#C4EAB5")
-            });
-
-            var remainingStart = localMatchIndex + _activeSearchKeyword.Length;
-            if (remainingStart < paragraph.Length)
-            {
-                block.Inlines.Add(new Run(paragraph[remainingStart..]));
-            }
-        }
-        else
-        {
-            block.Inlines.Add(new Run(paragraph));
-        }
+        var segments = new List<TextRunSegment>();
+        _scrollRunSegments[index] = segments;
+        AddParagraphInlines(block.Inlines, content, index, segments, Math.Min(840, GetResponsiveContentWidth()), 980);
 
         return block;
     }
@@ -1276,24 +1311,24 @@ public partial class EmbeddedReaderControl : UserControl
 
         return new Border
         {
-            Margin = new Thickness(0, 8, 0, 28),
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Margin = ReaderImageMargin,
+            HorizontalAlignment = image.HorizontalAlignment,
             CornerRadius = new CornerRadius(10),
             Background = GetBrush("MainBackgroundBrush", "#FFFFFF"),
             Child = image
         };
     }
 
-    private BlockUIContainer? CreatePagedImageBlock(ReaderContentBlock block)
+    private BlockUIContainer? CreatePagedImageBlock(ReaderContentBlock block, double maxWidth, double maxHeight)
     {
-        if (CreateReaderImage(block, maxWidth: 840, maxHeight: 980) is not { } image)
+        if (CreateReaderImage(block, maxWidth, maxHeight) is not { } image)
         {
             return null;
         }
 
         return new BlockUIContainer(image)
         {
-            Margin = new Thickness(0, 8, 0, 28)
+            Margin = ReaderImageMargin
         };
     }
 
@@ -1306,20 +1341,34 @@ public partial class EmbeddedReaderControl : UserControl
 
         try
         {
+            using var stream = new MemoryStream(bytes);
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.StreamSource = new MemoryStream(bytes);
+            bitmap.StreamSource = stream;
             bitmap.EndInit();
             bitmap.Freeze();
 
+            var widthLimit = Math.Min(
+                ResolveImageLength(block.ImageWidth, maxWidth) ?? maxWidth,
+                ResolveImageLength(block.ImageMaxWidth, maxWidth) ?? maxWidth);
+            var heightLimit = Math.Min(
+                ResolveImageLength(block.ImageHeight, maxHeight) ?? maxHeight,
+                ResolveImageLength(block.ImageMaxHeight, maxHeight) ?? maxHeight);
             var image = new Image
             {
                 Source = bitmap,
-                MaxWidth = maxWidth,
-                MaxHeight = maxHeight,
+                MaxWidth = Math.Min(maxWidth, widthLimit),
+                MaxHeight = Math.Min(maxHeight, heightLimit),
                 Stretch = Stretch.Uniform,
-                HorizontalAlignment = HorizontalAlignment.Center,
+                StretchDirection = StretchDirection.DownOnly,
+                HorizontalAlignment = block.ImageHorizontalAlignment?.ToLowerInvariant() switch
+                {
+                    "left" or "start" or "justify" => HorizontalAlignment.Left,
+                    "right" or "end" => HorizontalAlignment.Right,
+                    _ => HorizontalAlignment.Center
+                },
+                VerticalAlignment = VerticalAlignment.Top,
                 Cursor = Cursors.Hand,
                 ToolTip = string.IsNullOrWhiteSpace(block.ImageAlt) ? "点击查看图片" : block.ImageAlt,
                 Tag = bitmap
@@ -1332,6 +1381,43 @@ public partial class EmbeddedReaderControl : UserControl
         {
             return null;
         }
+    }
+
+    private double? ResolveImageLength(string? value, double availableLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var length = value.Trim().ToLowerInvariant();
+        var unitStart = length.Length;
+        while (unitStart > 0 && (char.IsLetter(length[unitStart - 1]) || length[unitStart - 1] == '%'))
+        {
+            unitStart--;
+        }
+
+        if (!double.TryParse(length[..unitStart], NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
+            || !double.IsFinite(number)
+            || number < 0)
+        {
+            return null;
+        }
+
+        var scale = length[unitStart..] switch
+        {
+            "" or "px" => 1,
+            "em" or "rem" => _fontSize,
+            "%" => availableLength / 100,
+            "pt" => 96d / 72,
+            "pc" => 16,
+            "in" => 96,
+            "cm" => 96 / 2.54,
+            "mm" => 96 / 25.4,
+            _ => double.NaN
+        };
+        var resolved = number * scale;
+        return double.IsFinite(resolved) ? resolved : null;
     }
 
     private void ReaderImage_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
@@ -1437,7 +1523,7 @@ public partial class EmbeddedReaderControl : UserControl
                 continue;
             }
 
-            if (child is TextBlock textBlock && textBlock.Text.Length > 0)
+            if (child is TextBlock textBlock)
             {
                 var localY = Math.Clamp(currentOffset - top, 0, Math.Max(0, textBlock.ActualHeight - 1));
                 var characterIndex = GetTextBlockCharacterIndex(textBlock, localY);
@@ -1463,10 +1549,9 @@ public partial class EmbeddedReaderControl : UserControl
             }
 
             var targetOffset = top + anchor.OffsetIntoLine;
-            if (child is TextBlock textBlock && textBlock.Text.Length > 0)
+            if (child is TextBlock textBlock)
             {
-                var characterIndex = Math.Clamp(anchor.CharacterIndex, 0, Math.Max(0, textBlock.Text.Length - 1));
-                var characterRect = GetTextBlockCharacterRect(textBlock, characterIndex);
+                var characterRect = GetTextBlockCharacterRect(textBlock, anchor.CharacterIndex);
                 targetOffset = top + characterRect.Y + anchor.OffsetIntoLine;
             }
 
@@ -1481,26 +1566,35 @@ public partial class EmbeddedReaderControl : UserControl
         return false;
     }
 
-    private static int GetTextBlockCharacterIndex(TextBlock textBlock, double localY)
+    private int GetTextBlockCharacterIndex(TextBlock textBlock, double localY)
     {
         var position = textBlock.GetPositionFromPoint(new Point(0, localY), snapToText: true);
-        if (position is null)
+        if (position is null || textBlock.Tag is not int paragraphIndex
+            || !_scrollRunSegments.TryGetValue(paragraphIndex, out var segments))
         {
             return 0;
         }
 
-        return Math.Clamp(
-            textBlock.ContentStart.GetOffsetToPosition(position),
-            0,
-            Math.Max(0, textBlock.Text.Length - 1));
+        foreach (var segment in segments)
+        {
+            if (position.CompareTo(segment.Run.ContentStart) <= 0)
+            {
+                return segment.StartCharacter;
+            }
+            if (position.CompareTo(segment.Run.ContentEnd) <= 0)
+            {
+                return segment.StartCharacter + Math.Clamp(segment.Run.ContentStart.GetOffsetToPosition(position), 0, segment.Length);
+            }
+        }
+
+        return segments.Count == 0 ? 0 : segments[^1].StartCharacter + segments[^1].Length;
     }
 
-    private static Rect GetTextBlockCharacterRect(TextBlock textBlock, int characterIndex)
+    private Rect GetTextBlockCharacterRect(TextBlock textBlock, int characterIndex)
     {
-        var position = textBlock.ContentStart.GetPositionAtOffset(
-                           Math.Clamp(characterIndex, 0, Math.Max(0, textBlock.Text.Length - 1)),
-                           LogicalDirection.Forward)
-                       ?? textBlock.ContentStart;
+        var position = textBlock.Tag is int paragraphIndex && _scrollRunSegments.TryGetValue(paragraphIndex, out var segments)
+            ? GetRunTextPosition(segments, characterIndex) ?? textBlock.ContentStart
+            : textBlock.ContentStart;
         return position.GetCharacterRect(LogicalDirection.Forward);
     }
 
@@ -1579,6 +1673,11 @@ public partial class EmbeddedReaderControl : UserControl
     {
         if (_readingMode == ReadingMode.Page)
         {
+            if (_pendingPageProgress is { } pendingProgress)
+            {
+                return pendingProgress;
+            }
+
             return _pageCount <= 0 ? 0 : Math.Clamp(_pageIndex / (double)_pageCount, 0, 1);
         }
 
@@ -1623,7 +1722,7 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void ScheduleReadingProgressSave()
     {
-        if (!IsLoaded || _document.ChapterCount == 0)
+        if (!IsLoaded || _document.ChapterCount == 0 || _isReadingPositionRestoring)
         {
             return;
         }
@@ -1634,13 +1733,14 @@ public partial class EmbeddedReaderControl : UserControl
 
     private void SaveCurrentReadingProgress()
     {
-        if (_document.ChapterCount == 0 || (_readingMode == ReadingMode.Page && _isPagePaginationPending))
+        if (_document.ChapterCount == 0 || _isReadingPositionRestoring
+            || (_readingMode == ReadingMode.Page && _isPagePaginationPending))
         {
             return;
         }
 
         var chapterIndex = Math.Clamp(_chapterIndex, 0, _document.ChapterCount - 1);
-        var chapterProgress = Math.Round(Math.Clamp(GetChapterProgress(), 0, 1), 6);
+        var chapterProgress = Math.Clamp(GetChapterProgress(), 0, 1);
         if (_book.LastReadChapterIndex == chapterIndex
             && Math.Abs(_book.LastReadChapterProgress - chapterProgress) < 0.000001)
         {
@@ -2956,7 +3056,7 @@ public partial class EmbeddedReaderControl : UserControl
                 return;
             }
 
-            if (_pagePaginator.IsPageCountValid)
+            if (_pagePaginator.IsPageCountValid && !_isPagePaginationPending)
             {
                 _pendingRestorePageAnchor = null;
                 _pendingPageProgress = null;
@@ -2966,6 +3066,7 @@ public partial class EmbeddedReaderControl : UserControl
             }
             else
             {
+                _pendingRestorePageAnchor = null;
                 _pendingPageProgress = progress;
             }
 

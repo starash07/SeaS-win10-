@@ -166,7 +166,7 @@ public static partial class EpubBookReader
         {
             var blocks = ExtractReaderBlocks(epub, epubChapter);
             var paragraphs = blocks
-                .Where(block => block.Kind == ReaderContentBlockKind.Text && !string.IsNullOrWhiteSpace(block.Text))
+                .Where(block => block.Kind == ReaderContentBlockKind.Text)
                 .Select(block => block.Text)
                 .ToList();
             if (blocks.Count == 0 && paragraphs.Count == 0)
@@ -252,7 +252,7 @@ public static partial class EpubBookReader
                 result.TryAdd(anchorId, targetParagraphIndex);
             }
 
-            if (block.Kind == ReaderContentBlockKind.Text && !string.IsNullOrWhiteSpace(block.Text))
+            if (block.Kind == ReaderContentBlockKind.Text)
             {
                 paragraphIndex++;
             }
@@ -267,14 +267,12 @@ public static partial class EpubBookReader
         try
         {
             var parsed = XDocument.Parse(chapter.Content, LoadOptions.PreserveWhitespace);
+            var imageStyles = new EpubImageStyles(document, chapter, parsed);
             var body = parsed.Descendants().FirstOrDefault(element =>
                 string.Equals(element.Name.LocalName, "body", StringComparison.OrdinalIgnoreCase));
             if (body is not null)
             {
-                foreach (var child in body.Elements())
-                {
-                    AddReaderBlocks(document, chapter, child, blocks);
-                }
+                AddReaderBlocks(document, chapter, body, blocks, imageStyles);
             }
         }
         catch
@@ -297,44 +295,27 @@ public static partial class EpubBookReader
         EpubBookDocument document,
         EpubChapter chapter,
         XElement element,
-        List<ReaderContentBlock> blocks)
+        List<ReaderContentBlock> blocks,
+        EpubImageStyles imageStyles)
     {
         var firstAddedBlockIndex = blocks.Count;
         var name = element.Name.LocalName.ToLowerInvariant();
-        if (name is "script" or "style" or "head" or "title" or "meta" or "link")
+        if (name is "script" or "style" or "head" or "title" or "meta" or "link"
+            || string.Equals(imageStyles.GetStyles(element).GetValueOrDefault("display"), "none", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         if (IsImageElement(element))
         {
-            AddImageBlock(document, chapter, element, blocks);
-            AttachElementAnchors(element, blocks, firstAddedBlockIndex);
-            return;
+            if (CreateImageBlock(document, chapter, element, imageStyles) is { } image)
+            {
+                blocks.Add(image);
+            }
         }
-
-        if (name is "p" or "li" or "blockquote" or "h1" or "h2" or "h3" or "h4" or "h5" or "h6")
+        else
         {
-            AddMixedInlineBlocks(document, chapter, element, blocks);
-            AttachElementAnchors(element, blocks, firstAddedBlockIndex);
-            return;
-        }
-
-        if (name is "br")
-        {
-            return;
-        }
-
-        if (!element.HasElements)
-        {
-            AddTextBlock(blocks, element.Value);
-            AttachElementAnchors(element, blocks, firstAddedBlockIndex);
-            return;
-        }
-
-        foreach (var child in element.Elements())
-        {
-            AddReaderBlocks(document, chapter, child, blocks);
+            AddMixedInlineBlocks(document, chapter, element, blocks, imageStyles);
         }
 
         AttachElementAnchors(element, blocks, firstAddedBlockIndex);
@@ -344,101 +325,182 @@ public static partial class EpubBookReader
         EpubBookDocument document,
         EpubChapter chapter,
         XElement element,
-        List<ReaderContentBlock> blocks)
+        List<ReaderContentBlock> blocks,
+        EpubImageStyles imageStyles)
     {
         var text = new StringBuilder();
-        foreach (var node in element.Nodes())
+        var images = new List<ReaderInlineImage>();
+        var anchorIds = new List<string>();
+        var pendingSpace = false;
+
+        void FlushParagraph()
         {
-            switch (node)
+            if (text.Length == 0 && images.Count == 0)
             {
-                case XText textNode:
-                    text.Append(textNode.Value);
-                    break;
-                case XElement child when IsImageElement(child):
-                    FlushTextBlock(blocks, text);
-                    AddImageBlock(document, chapter, child, blocks);
-                    break;
-                case XElement child when child.Name.LocalName.Equals("br", StringComparison.OrdinalIgnoreCase):
-                    text.Append('\n');
-                    break;
-                case XElement child when IsBlockElement(child):
-                    FlushTextBlock(blocks, text);
-                    AddReaderBlocks(document, chapter, child, blocks);
-                    break;
-                case XElement child:
-                    AppendInlineText(text, child);
-                    foreach (var image in child.Descendants().Where(IsImageElement))
+                pendingSpace = false;
+                return;
+            }
+
+            // A paragraph containing only one image remains a standalone illustration.
+            var block = text.Length == 0 && images.Count == 1
+                ? images[0].Image
+                : new ReaderContentBlock
+                {
+                    Text = text.ToString(),
+                    InlineImages = [.. images]
+                };
+            block.AnchorIds.AddRange(anchorIds.Except(block.AnchorIds, StringComparer.OrdinalIgnoreCase));
+            blocks.Add(block);
+            text.Clear();
+            images.Clear();
+            anchorIds.Clear();
+            pendingSpace = false;
+        }
+
+        void AppendPendingSpace()
+        {
+            if (pendingSpace && (text.Length > 0 || images.Count > 0))
+            {
+                text.Append(' ');
+            }
+            pendingSpace = false;
+        }
+
+        void AppendNode(XNode node)
+        {
+            if (node is XText textNode)
+            {
+                foreach (var character in textNode.Value)
+                {
+                    if (character is ' ' or '\t' or '\r' or '\n')
                     {
-                        FlushTextBlock(blocks, text);
-                        AddImageBlock(document, chapter, image, blocks);
+                        pendingSpace = true;
                     }
-                    break;
+                    else
+                    {
+                        AppendPendingSpace();
+                        text.Append(character);
+                    }
+                }
+                return;
+            }
+
+            if (node is not XElement child)
+            {
+                return;
+            }
+
+            var name = child.Name.LocalName.ToLowerInvariant();
+            var display = imageStyles.GetStyles(child).GetValueOrDefault("display");
+            if (name is "script" or "style" or "head" or "title" or "meta" or "link"
+                || string.Equals(display, "none", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (IsImageElement(child))
+            {
+                if (CreateImageBlock(document, chapter, child, imageStyles) is not { } image)
+                {
+                    return;
+                }
+
+                if (string.Equals(image.ImageDisplay, "block", StringComparison.OrdinalIgnoreCase))
+                {
+                    FlushParagraph();
+                    image.AnchorIds.AddRange(anchorIds);
+                    anchorIds.Clear();
+                    blocks.Add(image);
+                }
+                else
+                {
+                    AppendPendingSpace();
+                    images.Add(new ReaderInlineImage(text.Length, image));
+                    anchorIds.AddRange(image.AnchorIds);
+                }
+                return;
+            }
+
+            if (IsBlockElement(child) || string.Equals(display, "block", StringComparison.OrdinalIgnoreCase))
+            {
+                FlushParagraph();
+                var firstChildBlock = blocks.Count;
+                AddReaderBlocks(document, chapter, child, blocks, imageStyles);
+                if (blocks.Count > firstChildBlock)
+                {
+                    blocks[firstChildBlock].AnchorIds.AddRange(anchorIds);
+                    anchorIds.Clear();
+                }
+                return;
+            }
+
+            anchorIds.AddRange(GetElementAnchorIds(child));
+            if (name == "br")
+            {
+                text.Append('\n');
+                pendingSpace = false;
+                return;
+            }
+
+            foreach (var descendant in child.Nodes())
+            {
+                AppendNode(descendant);
             }
         }
 
-        FlushTextBlock(blocks, text);
+        foreach (var node in element.Nodes())
+        {
+            AppendNode(node);
+        }
+        FlushParagraph();
     }
 
-    private static void AppendInlineText(StringBuilder text, XElement element)
-    {
-        if (element.Name.LocalName.Equals("br", StringComparison.OrdinalIgnoreCase))
-        {
-            text.Append('\n');
-            return;
-        }
-
-        if (!IsImageElement(element))
-        {
-            text.Append(' ');
-            text.Append(element.Value);
-            text.Append(' ');
-        }
-    }
-
-    private static void FlushTextBlock(ICollection<ReaderContentBlock> blocks, StringBuilder text)
-    {
-        var normalized = NormalizeText(text.ToString());
-        text.Clear();
-        if (!string.IsNullOrWhiteSpace(normalized))
-        {
-            AddTextBlock(blocks, normalized);
-        }
-    }
-
-    private static void AddTextBlock(ICollection<ReaderContentBlock> blocks, string text)
-    {
-        var normalized = NormalizeText(text);
-        if (string.IsNullOrWhiteSpace(normalized))
-        {
-            return;
-        }
-
-        blocks.Add(new ReaderContentBlock
-        {
-            Kind = ReaderContentBlockKind.Text,
-            Text = normalized
-        });
-    }
-
-    private static void AddImageBlock(
+    private static ReaderContentBlock? CreateImageBlock(
         EpubBookDocument document,
         EpubChapter chapter,
         XElement element,
-        ICollection<ReaderContentBlock> blocks)
+        EpubImageStyles imageStyles)
     {
         var href = GetImageHref(element);
         if (string.IsNullOrWhiteSpace(href)
             || document.ReadResourceBytes(chapter.Path, href) is not { Length: > 0 } bytes)
         {
-            return;
+            return null;
         }
 
-        blocks.Add(new ReaderContentBlock
+        var sizing = imageStyles.GetStyles(element);
+        var verticalAlignment = sizing.GetValueOrDefault("vertical-align");
+        var horizontalAlignment = element.Attribute("align")?.Value;
+        if (sizing.GetValueOrDefault("margin-left") == "auto" && sizing.GetValueOrDefault("margin-right") == "auto")
+        {
+            horizontalAlignment = "center";
+        }
+        foreach (var ancestor in element.Ancestors())
+        {
+            var style = imageStyles.GetStyles(ancestor);
+            verticalAlignment ??= style.GetValueOrDefault("vertical-align") ?? ancestor.Name.LocalName.ToLowerInvariant() switch
+            {
+                "sup" => "super",
+                "sub" => "sub",
+                _ => null
+            };
+            horizontalAlignment ??= style.GetValueOrDefault("text-align");
+        }
+
+        return new ReaderContentBlock
         {
             Kind = ReaderContentBlockKind.Image,
             ImageBytes = bytes,
-            ImageAlt = element.Attribute("alt")?.Value ?? "图片"
-        });
+            ImageAlt = element.Attribute("alt")?.Value ?? "图片",
+            ImageWidth = sizing.GetValueOrDefault("width"),
+            ImageHeight = sizing.GetValueOrDefault("height"),
+            ImageMaxWidth = sizing.GetValueOrDefault("max-width"),
+            ImageMaxHeight = sizing.GetValueOrDefault("max-height"),
+            ImageDisplay = sizing.GetValueOrDefault("display"),
+            ImageVerticalAlignment = verticalAlignment,
+            ImageHorizontalAlignment = horizontalAlignment,
+            AnchorIds = GetElementAnchorIds(element).ToList()
+        };
     }
 
     private static void AttachElementAnchors(
@@ -451,12 +513,7 @@ public static partial class EpubBookReader
             return;
         }
 
-        var anchorIds = element.Attributes()
-            .Where(attribute => attribute.Name.LocalName is "id" or "name")
-            .Select(attribute => Uri.UnescapeDataString(attribute.Value.Trim()))
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Distinct(StringComparer.OrdinalIgnoreCase);
-        foreach (var anchorId in anchorIds)
+        foreach (var anchorId in GetElementAnchorIds(element))
         {
             if (!blocks[firstAddedBlockIndex].AnchorIds.Contains(anchorId, StringComparer.OrdinalIgnoreCase))
             {
@@ -465,11 +522,22 @@ public static partial class EpubBookReader
         }
     }
 
+    private static IEnumerable<string> GetElementAnchorIds(XElement element)
+    {
+        return element.Attributes()
+            .Where(attribute => attribute.Name.LocalName is "id" or "name")
+            .Select(attribute => Uri.UnescapeDataString(attribute.Value.Trim()))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+    }
+
     private static bool IsBlockElement(XElement element)
     {
         return element.Name.LocalName.ToLowerInvariant() is
-            "p" or "div" or "section" or "article" or "main" or "figure" or "blockquote"
+            "p" or "div" or "section" or "article" or "main" or "figure" or "figcaption" or "blockquote"
             or "ul" or "ol" or "li"
+            or "table" or "thead" or "tbody" or "tfoot" or "tr" or "th" or "td"
+            or "dl" or "dt" or "dd" or "aside" or "header" or "footer" or "address" or "pre" or "hr"
             or "h1" or "h2" or "h3" or "h4" or "h5" or "h6";
     }
 

@@ -1,10 +1,10 @@
 # SeaS
 
-SeaS 是一款可以切换无痕摸鱼模式的 Windows 本地阅读器，支持书架管理和 TXT、EPUB、Markdown 格式。当前版本为 `V1.1.0`，使用 C#、WPF 与 .NET 8 开发。
+SeaS 是一款可以切换无痕摸鱼模式的 Windows 本地阅读器，支持书架管理和 TXT、EPUB、Markdown 格式。当前版本为 `V1.1.1`，使用 C#、WPF 与 .NET 8 开发。
 
-> 版本状态：2026-09-16 重新打包，版本保持 `V1.1.0`，内置 LittleFish 更新至 `1.6.0` 修复构建。
+> `V1.1.1` 于 2026-11-12 打包，修复 EPUB 图片尺寸、行内图片与上标位置，以及关闭图书后的阅读进度恢复。
 
-本次更新内容与覆盖安装说明见 [UPDATE_README.md](UPDATE_README.md)。
+安装包见 [V1.1.1 发布页](https://github.com/starash07/SeaS-win10-/releases/tag/SeaS-v1.1.1)。本次更新内容与覆盖安装说明见 [UPDATE_README.md](UPDATE_README.md)。
 
 ## 当前功能
 
@@ -146,15 +146,15 @@ artifacts\dev
 dotnet tool install -g Obfuscar.GlobalTool
 ```
 
-发布 SeaS V1.1.0 时运行以下命令：
+发布 SeaS V1.1.1 时运行以下命令：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -Version 1.1.0
+powershell -ExecutionPolicy Bypass -File .\scripts\build-installer.ps1 -Version 1.1.1
 ```
 
 可选参数：
 
-- `-Version 1.1.0`：设置主程序、安装器和卸载器版本，格式必须为三段版本号；不传参数时默认使用当前版本。
+- `-Version 1.1.1`：设置主程序、安装器和卸载器版本，格式必须为三段版本号；不传参数时默认使用当前版本。
 - `-KeepIntermediate`：保留 `dist\installer` 中的发布、保护和封包中间文件，便于排查问题。
 - `-SkipObfuscation`：跳过 Obfuscar，仅用于定位保护兼容性问题，不能用于正式发布。
 - `-SkipSmokeTest`：跳过受保护程序冒烟测试，仅用于调试打包脚本，不能用于正式发布。
